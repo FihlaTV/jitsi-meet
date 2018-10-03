@@ -1,6 +1,11 @@
+// @flow
+
 import _ from 'lodash';
 
-import JitsiMeetJS from '../base/lib-jitsi-meet';
+import {
+    JitsiConnectionQualityEvents,
+    JitsiE2ePingEvents
+} from '../base/lib-jitsi-meet';
 
 declare var APP: Object;
 
@@ -25,14 +30,23 @@ const statsEmitter = {
      * {@code statsEmitter} should subscribe for stat updates.
      * @returns {void}
      */
-    startListeningForStats(conference) {
-        const { connectionQuality } = JitsiMeetJS.events;
-
-        conference.on(connectionQuality.LOCAL_STATS_UPDATED,
+    startListeningForStats(conference: Object) {
+        conference.on(JitsiConnectionQualityEvents.LOCAL_STATS_UPDATED,
             stats => this._onStatsUpdated(conference.myUserId(), stats));
 
-        conference.on(connectionQuality.REMOTE_STATS_UPDATED,
+        conference.on(JitsiConnectionQualityEvents.REMOTE_STATS_UPDATED,
             (id, stats) => this._emitStatsUpdate(id, stats));
+
+        conference.on(
+            JitsiE2ePingEvents.E2E_RTT_CHANGED,
+            (participant, e2eRtt) => {
+                const stats = {
+                    e2eRtt,
+                    region: participant.getProperty('region')
+                };
+
+                this._emitStatsUpdate(participant.getId(), stats);
+            });
     },
 
     /**
@@ -44,7 +58,7 @@ const statsEmitter = {
      * user have been updated.
      * @returns {void}
      */
-    subscribeToClientStats(id, callback) {
+    subscribeToClientStats(id: ?string, callback: Function) {
         if (!id) {
             return;
         }
@@ -66,7 +80,7 @@ const statsEmitter = {
      * stat updates for the specified user id.
      * @returns {void}
      */
-    unsubscribeToClientStats(id, callback) {
+    unsubscribeToClientStats(id: string, callback: Function) {
         if (!subscribers[id]) {
             return;
         }
@@ -89,7 +103,7 @@ const statsEmitter = {
      * @param {Object} stats - New connection stats for the user.
      * @returns {void}
      */
-    _emitStatsUpdate(id, stats = {}) {
+    _emitStatsUpdate(id: string, stats: Object = {}) {
         const callbacks = subscribers[id] || [];
 
         callbacks.forEach(callback => {
@@ -102,26 +116,25 @@ const statsEmitter = {
      * also update listeners of remote user stats of changes related to their
      * stats.
      *
-     * @param {string} currentUserId - The user id for the local user.
+     * @param {string} localUserId - The user id for the local user.
      * @param {Object} stats - Connection stats for the local user as provided
      * by the library.
      * @returns {void}
      */
-    _onStatsUpdated(currentUserId, stats) {
-        const allUserFramerates = stats.framerate;
-        const allUserResolutions = stats.resolution;
+    _onStatsUpdated(localUserId: string, stats: Object) {
+        const allUserFramerates = stats.framerate || {};
+        const allUserResolutions = stats.resolution || {};
 
-        const currentUserFramerate = allUserFramerates[currentUserId];
-        const currentUserResolution = allUserResolutions[currentUserId];
-
-        // FIXME resolution and framerate are hashes keyed off of user ids with
+        // FIXME resolution and framerate are maps keyed off of user ids with
         // stat values. Receivers of stats expect resolution and framerate to
-        // be primatives, not hashes, so overwrites the 'lib-jitsi-meet' stats
-        // objects.
-        stats.framerate = currentUserFramerate;
-        stats.resolution = currentUserResolution;
+        // be primitives, not maps, so here we override the 'lib-jitsi-meet'
+        // stats objects.
+        const modifiedLocalStats = Object.assign({}, stats, {
+            framerate: allUserFramerates[localUserId],
+            resolution: allUserResolutions[localUserId]
+        });
 
-        this._emitStatsUpdate(currentUserId, stats);
+        this._emitStatsUpdate(localUserId, modifiedLocalStats);
 
         // Get all the unique user ids from the framerate and resolution stats
         // and update remote user stats as needed.
@@ -129,7 +142,7 @@ const statsEmitter = {
         const resolutionUserIds = Object.keys(allUserResolutions);
 
         _.union(framerateUserIds, resolutionUserIds)
-            .filter(id => id !== currentUserId)
+            .filter(id => id !== localUserId)
             .forEach(id => {
                 const remoteUserStats = {};
 

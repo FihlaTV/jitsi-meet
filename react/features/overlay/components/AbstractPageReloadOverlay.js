@@ -1,28 +1,45 @@
-/* @flow */
+// @flow
 
+import PropTypes from 'prop-types';
 import React, { Component } from 'react';
 
+import {
+    createPageReloadScheduledEvent,
+    sendAnalytics
+} from '../../analytics';
+import { reloadNow } from '../../app';
+import {
+    isFatalJitsiConferenceError,
+    isFatalJitsiConnectionError
+} from '../../base/lib-jitsi-meet';
 import { randomInt } from '../../base/util';
 
-import { _reloadNow } from '../actions';
 import ReloadButton from './ReloadButton';
 
-declare var AJS: Object;
 declare var APP: Object;
 
 const logger = require('jitsi-meet-logger').getLogger(__filename);
 
 /**
- * Implements abstract React Component for the page reload overlays.
+ * Implements an abstract React {@link Component} for the page reload overlays.
  */
-export default class AbstractPageReloadOverlay extends Component {
+export default class AbstractPageReloadOverlay extends Component<*, *> {
     /**
-     * AbstractPageReloadOverlay component's property types.
+     * {@code AbstractPageReloadOverlay} component's property types.
      *
      * @static
      */
     static propTypes = {
-        dispatch: React.PropTypes.func,
+        /**
+         * The details is an object containing more information about the
+         * connection failed (shard changes, was the computer suspended, etc.)
+         *
+         * @public
+         * @type {object}
+         */
+        details: PropTypes.object,
+
+        dispatch: PropTypes.func,
 
         /**
          * The indicator which determines whether the reload was caused by
@@ -31,7 +48,7 @@ export default class AbstractPageReloadOverlay extends Component {
          * @public
          * @type {boolean}
          */
-        isNetworkFailure: React.PropTypes.bool,
+        isNetworkFailure: PropTypes.bool,
 
         /**
          * The reason for the error that will cause the reload.
@@ -40,7 +57,7 @@ export default class AbstractPageReloadOverlay extends Component {
          * @public
          * @type {string}
          */
-        reason: React.PropTypes.string,
+        reason: PropTypes.string,
 
         /**
          * The function to translate human-readable text.
@@ -48,10 +65,49 @@ export default class AbstractPageReloadOverlay extends Component {
          * @public
          * @type {Function}
          */
-        t: React.PropTypes.func
+        t: PropTypes.func
     };
 
-    _interval: ?number
+    /**
+     * Determines whether this overlay needs to be rendered (according to a
+     * specific redux state). Called by {@link OverlayContainer}.
+     *
+     * @param {Object} state - The redux state.
+     * @returns {boolean} - If this overlay needs to be rendered, {@code true};
+     * {@code false}, otherwise.
+     */
+    static needsRender(state: Object) {
+        // FIXME web does not rely on the 'recoverable' flag set on an error
+        // action, but on a predefined list of fatal errors. Because of that
+        // the value of 'fatalError' which relies on the flag should not be used
+        // on web yet (until conference/connection and their errors handling is
+        // not unified).
+        return typeof APP === 'undefined'
+            ? Boolean(state['features/overlay'].fatalError)
+            : this.needsRenderWeb(state);
+    }
+
+    /**
+     * Determines whether this overlay needs to be rendered (according to a
+     * specific redux state). Called by {@link OverlayContainer}.
+     *
+     * @param {Object} state - The redux state.
+     * @returns {boolean} - If this overlay needs to be rendered, {@code true};
+     * {@code false}, otherwise.
+     */
+    static needsRenderWeb(state: Object) {
+        const conferenceError = state['features/base/conference'].error;
+        const configError = state['features/base/config'].error;
+        const connectionError = state['features/base/connection'].error;
+
+        return (
+            (connectionError && isFatalJitsiConnectionError(connectionError))
+                || (conferenceError
+                    && isFatalJitsiConferenceError(conferenceError))
+                || configError);
+    }
+
+    _interval: ?IntervalID;
 
     state: {
 
@@ -83,7 +139,7 @@ export default class AbstractPageReloadOverlay extends Component {
          * @type {string}
          */
         title: string
-    }
+    };
 
     /**
      * Initializes a new AbstractPageReloadOverlay instance.
@@ -132,15 +188,23 @@ export default class AbstractPageReloadOverlay extends Component {
         // because the log queue is not flushed before "fabric terminated" is
         // sent to the backed.
         // FIXME: We should dispatch action for this.
-        APP.conference.logEvent(
-            'page.reload',
-            /* value */ undefined,
-            /* label */ this.props.reason);
+        if (typeof APP !== 'undefined') {
+            if (APP.conference && APP.conference._room) {
+                APP.conference._room.sendApplicationLog(JSON.stringify({
+                    name: 'page.reload',
+                    label: this.props.reason
+                }));
+            }
+        }
+
+        sendAnalytics(createPageReloadScheduledEvent(
+            this.props.reason,
+            this.state.timeoutSeconds,
+            this.props.details));
+
         logger.info(
             `The conference will be reloaded after ${
                 this.state.timeoutSeconds} seconds.`);
-
-        AJS.progressBars.update('#reloadProgressBar', 0);
 
         this._interval
             = setInterval(
@@ -151,7 +215,7 @@ export default class AbstractPageReloadOverlay extends Component {
                             this._interval = undefined;
                         }
 
-                        this.props.dispatch(_reloadNow());
+                        this.props.dispatch(reloadNow());
                     } else {
                         this.setState(prevState => {
                             return {
@@ -161,20 +225,6 @@ export default class AbstractPageReloadOverlay extends Component {
                     }
                 },
                 1000);
-    }
-
-    /**
-     * React Component method that executes once component is updated.
-     *
-     * @inheritdoc
-     * @returns {void}
-     */
-    componentDidUpdate() {
-        const { timeLeft, timeoutSeconds } = this.state;
-
-        AJS.progressBars.update(
-            '#reloadProgressBar',
-            (timeoutSeconds - timeLeft) / timeoutSeconds);
     }
 
     /**
@@ -191,7 +241,7 @@ export default class AbstractPageReloadOverlay extends Component {
     }
 
     /**
-     * Renders the button for relaod the page if necessary.
+     * Renders the button for reloading the page if necessary.
      *
      * @protected
      * @returns {ReactElement|null}
@@ -213,12 +263,43 @@ export default class AbstractPageReloadOverlay extends Component {
      * @returns {ReactElement}
      */
     _renderProgressBar() {
+        const { timeLeft, timeoutSeconds } = this.state;
+        const timeRemaining = timeoutSeconds - timeLeft;
+        const percentageComplete
+            = Math.floor((timeRemaining / timeoutSeconds) * 100);
+
         return (
             <div
-                className = 'aui-progress-indicator'
+                className = 'progress-indicator'
                 id = 'reloadProgressBar'>
-                <span className = 'aui-progress-indicator-value' />
+                <div
+                    className = 'progress-indicator-fill'
+                    style = {{ width: `${percentageComplete}%` }} />
             </div>
         );
     }
+}
+
+/**
+ * Maps (parts of) the redux state to the associated component's props.
+ *
+ * @param {Object} state - The redux state.
+ * @protected
+ * @returns {{
+ *     details: Object,
+ *     isNetworkFailure: boolean,
+ *     reason: string
+ * }}
+ */
+export function abstractMapStateToProps(state: Object) {
+    const { error: configError } = state['features/base/config'];
+    const { error: connectionError } = state['features/base/connection'];
+    const { fatalError } = state['features/overlay'];
+
+    return {
+        details: fatalError && fatalError.details,
+        isNetworkFailure:
+            fatalError === configError || fatalError === connectionError,
+        reason: fatalError && fatalError.message
+    };
 }

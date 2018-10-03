@@ -1,11 +1,12 @@
-import React, { PureComponent } from 'react';
+import PropTypes from 'prop-types';
+import React, { Component } from 'react';
 
 import { JitsiTrackEvents } from '../../base/lib-jitsi-meet';
 
 /**
  * React component for displaying a audio level meter for a JitsiLocalTrack.
  */
-class AudioInputPreview extends PureComponent {
+class AudioInputPreview extends Component {
     /**
      * AudioInputPreview component's property types.
      *
@@ -15,7 +16,7 @@ class AudioInputPreview extends PureComponent {
         /*
          * The JitsiLocalTrack to show an audio level meter for.
          */
-        track: React.PropTypes.object
+        track: PropTypes.object
     };
 
     /**
@@ -52,8 +53,10 @@ class AudioInputPreview extends PureComponent {
      * @returns {void}
      */
     componentWillReceiveProps(nextProps) {
-        this._listenForAudioUpdates(nextProps.track);
-        this._updateAudioLevel(0);
+        if (nextProps.track !== this.props.track) {
+            this._listenForAudioUpdates(nextProps.track);
+            this._updateAudioLevel(0);
+        }
     }
 
     /**

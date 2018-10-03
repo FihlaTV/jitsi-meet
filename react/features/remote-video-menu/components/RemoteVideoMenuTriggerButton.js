@@ -1,5 +1,8 @@
-import AKInlineDialog from '@atlaskit/inline-dialog';
+// @flow
+
 import React, { Component } from 'react';
+
+import { Popover } from '../../base/popover';
 
 import {
     MuteButton,
@@ -13,56 +16,78 @@ declare var $: Object;
 declare var interfaceConfig: Object;
 
 /**
+ * The type of the React {@code Component} props of
+ * {@link RemoteVideoMenuTriggerButton}.
+ */
+type Props = {
+
+    /**
+     * A value between 0 and 1 indicating the volume of the participant's
+     * audio element.
+     */
+    initialVolumeValue: number,
+
+    /**
+     * Whether or not the participant is currently muted.
+     */
+    isAudioMuted: boolean,
+
+    /**
+     * Whether or not the participant is a conference moderator.
+     */
+    isModerator: boolean,
+
+    /**
+     * Callback to invoke when the popover has been displayed.
+     */
+    onMenuDisplay: Function,
+
+    /**
+     * Callback to invoke choosing to start a remote control session with
+     * the participant.
+     */
+    onRemoteControlToggle: Function,
+
+    /**
+     * Callback to invoke when changing the level of the participant's
+     * audio element.
+     */
+    onVolumeChange: Function,
+
+    /**
+     * The position relative to the trigger the remote menu should display
+     * from. Valid values are those supported by AtlasKit
+     * {@code InlineDialog}.
+     */
+    menuPosition: string,
+
+    /**
+     * The ID for the participant on which the remote video menu will act.
+     */
+    participantID: string,
+
+    /**
+     * The current state of the participant's remote control session.
+     */
+    remoteControlState: number
+};
+
+/**
  * React {@code Component} for displaying an icon associated with opening the
  * the {@code RemoteVideoMenu}.
  *
  * @extends {Component}
  */
-class RemoteVideoMenuTriggerButton extends Component {
-    static propTypes = {
-        /**
-         * A value between 0 and 1 indicating the volume of the participant's
-         * audio element.
-         */
-        initialVolumeValue: React.PropTypes.number,
-
-        /**
-         * Whether or not the participant is currently muted.
-         */
-        isAudioMuted: React.PropTypes.bool,
-
-        /**
-         * Whether or not the participant is a conference moderator.
-         */
-        isModerator: React.PropTypes.bool,
-
-        /**
-         * Callback to invoke when the popover has been displayed.
-         */
-        onMenuDisplay: React.PropTypes.func,
-
-        /**
-         * Callback to invoke choosing to start a remote control session with
-         * the participant.
-         */
-        onRemoteControlToggle: React.PropTypes.func,
-
-        /**
-         * Callback to invoke when changing the level of the participant's
-         * audio element.
-         */
-        onVolumeChange: React.PropTypes.func,
-
-        /**
-         * The ID for the participant on which the remote video menu will act.
-         */
-        participantID: React.PropTypes.string,
-
-        /**
-         * The current state of the participant's remote control session.
-         */
-        remoteControlState: React.PropTypes.number
-    };
+class RemoteVideoMenuTriggerButton extends Component<Props> {
+    /**
+     * The internal reference to topmost DOM/HTML element backing the React
+     * {@code Component}. Accessed directly for associating an element as
+     * the trigger for a popover.
+     *
+     * @private
+     * @type {HTMLDivElement}
+     */
+    _rootElement = null;
 
     /**
      * Initializes a new {#@code RemoteVideoMenuTriggerButton} instance.
@@ -70,26 +95,11 @@ class RemoteVideoMenuTriggerButton extends Component {
      * @param {Object} props - The read-only properties with which the new
      * instance is to be initialized.
      */
-    constructor(props) {
+    constructor(props: Object) {
         super(props);
 
-        this.state = {
-            showRemoteMenu: false
-        };
-
-        /**
-         * The internal reference to topmost DOM/HTML element backing the React
-         * {@code Component}. Accessed directly for associating an element as
-         * the trigger for a popover.
-         *
-         * @private
-         * @type {HTMLDivElement}
-         */
-        this._rootElement = null;
-
-        // Bind event handlers so they are only bound once for every instance.
-        this._onRemoteMenuClose = this._onRemoteMenuClose.bind(this);
-        this._onRemoteMenuToggle = this._onRemoteMenuToggle.bind(this);
+        // Bind event handler so it is only bound once for every instance.
+        this._onShowRemoteMenu = this._onShowRemoteMenu.bind(this);
     }
 
     /**
@@ -99,49 +109,37 @@ class RemoteVideoMenuTriggerButton extends Component {
      * @returns {ReactElement}
      */
     render() {
+        const content = this._renderRemoteVideoMenu();
+
+        if (!content) {
+            return null;
+        }
+
         return (
-            <AKInlineDialog
-                content = { this._renderRemoteVideoMenu() }
-                isOpen = { this.state.showRemoteMenu }
-                onClose = { this._onRemoteMenuClose }
-                position = { interfaceConfig.VERTICAL_FILMSTRIP
-                    ? 'left middle' : 'top center' }
-                shouldFlip = { true }>
+            <Popover
+                content = { content }
+                onPopoverOpen = { this._onShowRemoteMenu }
+                position = { this.props.menuPosition }>
                 <span
-                    className = 'popover-trigger remote-video-menu-trigger'
-                    onClick = { this._onRemoteMenuToggle }>
+                    className = 'popover-trigger remote-video-menu-trigger'>
                     <i
                         className = 'icon-thumb-menu'
                         title = 'Remote user controls' />
                 </span>
-            </AKInlineDialog>
+            </Popover>
         );
     }
 
+    _onShowRemoteMenu: () => void;
+
     /**
-     * Closes the {@code RemoteVideoMenu}.
+     * Opens the {@code RemoteVideoMenu}.
      *
      * @private
      * @returns {void}
      */
-    _onRemoteMenuClose() {
-        this.setState({ showRemoteMenu: false });
-    }
-
-    /**
-     * Opens or closes the {@code RemoteVideoMenu}.
-     *
-     * @private
-     * @returns {void}
-     */
-    _onRemoteMenuToggle() {
-        const willShowRemoteMenu = !this.state.showRemoteMenu;
-
-        if (willShowRemoteMenu) {
-            this.props.onMenuDisplay();
-        }
-
-        this.setState({ showRemoteMenu: willShowRemoteMenu });
+    _onShowRemoteMenu() {
+        this.props.onMenuDisplay();
     }
 
     /**
@@ -162,32 +160,50 @@ class RemoteVideoMenuTriggerButton extends Component {
             participantID
         } = this.props;
 
-        return (
-            <RemoteVideoMenu id = { participantID }>
-                { isModerator
-                    ? <MuteButton
-                        isAudioMuted = { isAudioMuted }
-                        onClick = { this._onRemoteMenuClose }
-                        participantID = { participantID } />
-                    : null }
-                { isModerator
-                    ? <KickButton
-                        onClick = { this._onRemoteMenuClose }
-                        participantID = { participantID } />
-                    : null }
-                { remoteControlState
-                    ? <RemoteControlButton
-                        onClick = { onRemoteControlToggle }
-                        participantID = { participantID }
-                        remoteControlState = { remoteControlState } />
-                    : null }
-                { onVolumeChange
-                    ? <VolumeSlider
-                        initialValue = { initialVolumeValue }
-                        onChange = { onVolumeChange } />
-                    : null }
-            </RemoteVideoMenu>
-        );
+        const buttons = [];
+
+        if (isModerator) {
+            buttons.push(
+                <MuteButton
+                    isAudioMuted = { isAudioMuted }
+                    key = 'mute'
+                    participantID = { participantID } />
+            );
+            buttons.push(
+                <KickButton
+                    key = 'kick'
+                    participantID = { participantID } />
+            );
+        }
+
+        if (remoteControlState) {
+            buttons.push(
+                <RemoteControlButton
+                    key = 'remote-control'
+                    onClick = { onRemoteControlToggle }
+                    participantID = { participantID }
+                    remoteControlState = { remoteControlState } />
+            );
+        }
+
+        if (onVolumeChange) {
+            buttons.push(
+                <VolumeSlider
+                    initialValue = { initialVolumeValue }
+                    key = 'volume-slider'
+                    onChange = { onVolumeChange } />
+            );
+        }
+
+        if (buttons.length > 0) {
+            return (
+                <RemoteVideoMenu id = { participantID }>
+                    { buttons }
+                </RemoteVideoMenu>
+            );
+        }
+
+        return null;
     }
 }
 

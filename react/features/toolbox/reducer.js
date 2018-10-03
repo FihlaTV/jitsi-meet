@@ -1,13 +1,11 @@
-/* @flow */
+// @flow
 
-import { ReducerRegistry } from '../base/redux';
+import { ReducerRegistry, set } from '../base/redux';
 
 import {
     CLEAR_TOOLBOX_TIMEOUT,
-    SET_DEFAULT_TOOLBOX_BUTTONS,
-    SET_SUBJECT,
-    SET_SUBJECT_SLIDE_IN,
-    SET_TOOLBAR_BUTTON,
+    FULL_SCREEN_CHANGED,
+    SET_OVERFLOW_MENU_VISIBLE,
     SET_TOOLBAR_HOVERED,
     SET_TOOLBOX_ALWAYS_VISIBLE,
     SET_TOOLBOX_ENABLED,
@@ -15,7 +13,6 @@ import {
     SET_TOOLBOX_TIMEOUT_MS,
     SET_TOOLBOX_VISIBLE
 } from './actionTypes';
-import defaultToolbarButtons from './defaultToolbarButtons';
 
 declare var interfaceConfig: Object;
 
@@ -25,37 +22,49 @@ declare var interfaceConfig: Object;
  * @private
  * @returns {{
  *     alwaysVisible: boolean,
+ *     enabled: boolean,
  *     hovered: boolean,
- *     primaryToolbarButtons: Map,
- *     secondaryToolbarButtons: Map,
- *     subject: string,
- *     subjectSlideIn: boolean,
+ *     overflowMenuVisible: boolean,
  *     timeoutID: number,
  *     timeoutMS: number,
  *     visible: boolean
  * }}
  */
 function _getInitialState() {
+    // Does the toolbar eventually fade out, or is it always visible?
+    let alwaysVisible = false;
+
+    // Toolbar (initial) visibility.
+    let visible = false;
+
     // Default toolbox timeout for mobile app.
     let timeoutMS = 5000;
 
-    if (typeof interfaceConfig !== 'undefined'
-            && interfaceConfig.INITIAL_TOOLBAR_TIMEOUT) {
-        timeoutMS = interfaceConfig.INITIAL_TOOLBAR_TIMEOUT;
+    if (typeof interfaceConfig !== 'undefined') {
+        if (interfaceConfig.INITIAL_TOOLBAR_TIMEOUT) {
+            timeoutMS = interfaceConfig.INITIAL_TOOLBAR_TIMEOUT;
+        }
+        if (typeof interfaceConfig.TOOLBAR_ALWAYS_VISIBLE !== 'undefined') {
+            alwaysVisible = interfaceConfig.TOOLBAR_ALWAYS_VISIBLE;
+        }
+    }
+
+    // When the toolbar is always visible, it must initially be visible too.
+    if (alwaysVisible === true) {
+        visible = true;
     }
 
     return {
         /**
          * The indicator which determines whether the Toolbox should always be
-         * visible.
+         * visible. When false, the toolbar will fade out after timeoutMS.
          *
          * @type {boolean}
          */
-        alwaysVisible: false,
+        alwaysVisible,
 
         /**
-         * The indicator which determines whether the Toolbox is enabled. For
-         * example, modules/UI/recording/Recording.js disables the Toolbox.
+         * The indicator which determines whether the Toolbox is enabled.
          *
          * @type {boolean}
          */
@@ -70,32 +79,11 @@ function _getInitialState() {
         hovered: false,
 
         /**
-         * A Map of the default buttons of the PrimaryToolbar.
-         *
-         * @type {Map}
-         */
-        primaryToolbarButtons: new Map(),
-
-        /**
-         * A Map of the default buttons of the SecondaryToolbar.
-         *
-         * @type {Map}
-         */
-        secondaryToolbarButtons: new Map(),
-
-        /**
-         * The text of the conference subject.
-         *
-         * @type {string}
-         */
-        subject: '',
-
-        /**
-         * The indicator which determines whether the subject is sliding in.
+         * The indicator which determines whether the OverflowMenu is visible.
          *
          * @type {boolean}
          */
-        subjectSlideIn: false,
+        overflowMenuVisible: false,
 
         /**
          * A number, non-zero value which identifies the timer created by a call
@@ -118,7 +106,7 @@ function _getInitialState() {
          *
          * @type {boolean}
          */
-        visible: false
+        visible
     };
 }
 
@@ -132,30 +120,17 @@ ReducerRegistry.register(
                 timeoutID: undefined
             };
 
-        case SET_DEFAULT_TOOLBOX_BUTTONS: {
-            const { primaryToolbarButtons, secondaryToolbarButtons } = action;
-
+        case FULL_SCREEN_CHANGED:
             return {
                 ...state,
-                primaryToolbarButtons,
-                secondaryToolbarButtons
+                fullScreen: action.fullScreen
             };
-        }
 
-        case SET_SUBJECT:
+        case SET_OVERFLOW_MENU_VISIBLE:
             return {
                 ...state,
-                subject: action.subject
+                overflowMenuVisible: action.visible
             };
-
-        case SET_SUBJECT_SLIDE_IN:
-            return {
-                ...state,
-                subjectSlideIn: action.subjectSlideIn
-            };
-
-        case SET_TOOLBAR_BUTTON:
-            return _setButton(state, action);
 
         case SET_TOOLBAR_HOVERED:
             return {
@@ -166,7 +141,8 @@ ReducerRegistry.register(
         case SET_TOOLBOX_ALWAYS_VISIBLE:
             return {
                 ...state,
-                alwaysVisible: action.alwaysVisible
+                alwaysVisible: action.alwaysVisible,
+                visible: action.alwaysVisible === true ? true : state.visible
             };
 
         case SET_TOOLBOX_ENABLED:
@@ -189,53 +165,8 @@ ReducerRegistry.register(
             };
 
         case SET_TOOLBOX_VISIBLE:
-            return {
-                ...state,
-                visible: action.visible
-            };
+            return set(state, 'visible', action.visible);
         }
 
         return state;
     });
-
-/**
- * Sets new value of the button.
- *
- * @param {Object} state - Redux state.
- * @param {Object} action - Dispatched action.
- * @param {Object} action.button - Object describing toolbar button.
- * @param {Object} action.buttonName - The name of the button.
- * @private
- * @returns {Object}
- */
-function _setButton(state, { button, buttonName }): Object {
-    const buttonDefinition = defaultToolbarButtons[buttonName];
-
-    // We don't need to update if the button shouldn't be displayed
-    if (!buttonDefinition || !buttonDefinition.isDisplayed()) {
-        return {
-            ...state
-        };
-    }
-
-    const { primaryToolbarButtons, secondaryToolbarButtons } = state;
-    let selectedButton = primaryToolbarButtons.get(buttonName);
-    let place = 'primaryToolbarButtons';
-
-    if (!selectedButton) {
-        selectedButton = secondaryToolbarButtons.get(buttonName);
-        place = 'secondaryToolbarButtons';
-    }
-
-    selectedButton = {
-        ...selectedButton,
-        ...button
-    };
-
-    const updatedToolbar = state[place].set(buttonName, selectedButton);
-
-    return {
-        ...state,
-        [place]: new Map(updatedToolbar)
-    };
-}

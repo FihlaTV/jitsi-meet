@@ -1,189 +1,23 @@
-/* global $, APP, config, JitsiMeetJS, interfaceConfig */
+/* global $, APP, interfaceConfig */
 
 import {
-    setFilmstripRemoteVideosVisibility,
-    setFilmstripVisibility
-} from '../../../react/features/filmstrip';
+    LAYOUTS,
+    getCurrentLayout,
+    getMaxColumnCount,
+    getTileViewGridDimensions,
+    shouldDisplayTileView
+} from '../../../react/features/video-layout';
 
-import UIEvents from "../../../service/UI/UIEvents";
-import UIUtil from "../util/UIUtil";
+import UIUtil from '../util/UIUtil';
 
 const Filmstrip = {
     /**
-     *
-     * @param eventEmitter the {EventEmitter} through which {Filmstrip} is to
-     * emit/fire {UIEvents} (such as {UIEvents.TOGGLED_FILMSTRIP}).
+     * Caches jquery lookups of the filmstrip for future use.
      */
-    init (eventEmitter) {
-        this.iconMenuDownClassName = 'icon-menu-down';
-        this.iconMenuUpClassName = 'icon-menu-up';
+    init() {
         this.filmstripContainerClassName = 'filmstrip';
         this.filmstrip = $('#remoteVideos');
         this.filmstripRemoteVideos = $('#filmstripRemoteVideosContainer');
-        this.eventEmitter = eventEmitter;
-
-        // Show the toggle button and add event listeners only when out of
-        // filmstrip only mode.
-        if (!interfaceConfig.filmStripOnly) {
-            this._initFilmstripToolbar();
-            this.registerListeners();
-        }
-    },
-
-    /**
-     * Sets a class on the remote videos container for CSS to adjust visibility
-     * of the remote videos. Will no-op if config.debug is truthy, as should be
-     * the case with torture tests.
-     *
-     * @param {boolean} shouldHide - True if remote videos should be hidden,
-     * false if they should be visible.
-     * @returns {void}
-     */
-    setRemoteVideoVisibility(shouldShow) {
-        // Allow disabling on 1-on-1 UI mode. Used by torture tests.
-        if (config.disable1On1Mode) {
-            return;
-        }
-
-        APP.store.dispatch(setFilmstripRemoteVideosVisibility(shouldShow));
-        $(`.${this.filmstripContainerClassName}`)
-            .toggleClass('hide-videos', !shouldShow);
-    },
-
-    /**
-     * Initializes the filmstrip toolbar.
-     */
-    _initFilmstripToolbar() {
-        let toolbarContainerHTML = this._generateToolbarHTML();
-        let className = this.filmstripContainerClassName;
-        let container = document.querySelector(`.${className}`);
-
-        UIUtil.prependChild(container, toolbarContainerHTML);
-
-        let iconSelector = '#toggleFilmstripButton i';
-        this.toggleFilmstripIcon = document.querySelector(iconSelector);
-    },
-
-    /**
-     * Generates HTML layout for filmstrip toggle button and wrapping container.
-     * @returns {HTMLElement}
-     * @private
-     */
-    _generateToolbarHTML() {
-        let container = document.createElement('div');
-        let isVisible = this.isFilmstripVisible();
-        container.className = 'filmstrip__toolbar';
-        container.innerHTML = `
-            <button id="toggleFilmstripButton">
-                <i class="icon-menu-${isVisible ? 'down' : 'up'}">
-                </i>
-            </button>
-        `;
-
-        return container;
-    },
-
-    /**
-     * Attach 'click' listener to "hide filmstrip" button
-     */
-    registerListeners() {
-        // Important:
-        // Firing the event instead of executing toggleFilmstrip method because
-        // it's important to hide the filmstrip by UI.toggleFilmstrip in order
-        // to correctly resize the video area.
-        $('#toggleFilmstripButton').on('click',
-            () => this.eventEmitter.emit(UIEvents.TOGGLE_FILMSTRIP));
-
-        this._registerToggleFilmstripShortcut();
-    },
-
-    /**
-     * Registering toggle filmstrip shortcut
-     * @private
-     */
-    _registerToggleFilmstripShortcut() {
-        let shortcut = 'F';
-        let shortcutAttr = 'filmstripPopover';
-        let description = 'keyboardShortcuts.toggleFilmstrip';
-        // Important:
-        // Firing the event instead of executing toggleFilmstrip method because
-        // it's important to hide the filmstrip by UI.toggleFilmstrip in order
-        // to correctly resize the video area.
-        let handler = () => this.eventEmitter.emit(UIEvents.TOGGLE_FILMSTRIP);
-
-        APP.keyboardshortcut.registerShortcut(
-            shortcut,
-            shortcutAttr,
-            handler,
-            description
-        );
-    },
-
-    /**
-     * Changes classes of icon for showing down state
-     */
-    showMenuDownIcon() {
-        let icon = this.toggleFilmstripIcon;
-        if(icon) {
-            icon.classList.add(this.iconMenuDownClassName);
-            icon.classList.remove(this.iconMenuUpClassName);
-        }
-    },
-
-    /**
-     * Changes classes of icon for showing up state
-     */
-    showMenuUpIcon() {
-        let icon = this.toggleFilmstripIcon;
-        if(icon) {
-            icon.classList.add(this.iconMenuUpClassName);
-            icon.classList.remove(this.iconMenuDownClassName);
-        }
-    },
-
-    /**
-     * Toggles the visibility of the filmstrip.
-     *
-     * @param visible optional {Boolean} which specifies the desired visibility
-     * of the filmstrip. If not specified, the visibility will be flipped
-     * (i.e. toggled); otherwise, the visibility will be set to the specified
-     * value.
-     * @param {Boolean} sendAnalytics - True to send an analytics event. The
-     * default value is true.
-     *
-     * Note:
-     * This method shouldn't be executed directly to hide the filmstrip.
-     * It's important to hide the filmstrip with UI.toggleFilmstrip in order
-     * to correctly resize the video area.
-     */
-    toggleFilmstrip(visible, sendAnalytics = true) {
-        const isVisibleDefined = typeof visible === 'boolean';
-        if (!isVisibleDefined) {
-            visible = this.isFilmstripVisible();
-        } else if (this.isFilmstripVisible() === visible) {
-            return;
-        }
-        if (sendAnalytics) {
-            JitsiMeetJS.analytics.sendEvent('toolbar.filmstrip.toggled');
-        }
-        this.filmstrip.toggleClass("hidden");
-
-        if (visible) {
-            this.showMenuUpIcon();
-        } else {
-            this.showMenuDownIcon();
-        }
-
-        // Emit/fire UIEvents.TOGGLED_FILMSTRIP.
-        const eventEmitter = this.eventEmitter;
-        const isFilmstripVisible = this.isFilmstripVisible();
-
-        if (eventEmitter) {
-            eventEmitter.emit(
-                UIEvents.TOGGLED_FILMSTRIP,
-                this.isFilmstripVisible());
-        }
-        APP.store.dispatch(setFilmstripVisibility(isFilmstripVisible));
     },
 
     /**
@@ -191,14 +25,7 @@ const Filmstrip = {
      * @returns {boolean}
      */
     isFilmstripVisible() {
-        return !this.filmstrip.hasClass('hidden');
-    },
-
-    /**
-     * Adjusts styles for filmstrip-only mode.
-     */
-    setFilmstripOnly() {
-        this.filmstrip.addClass('filmstrip__videos-filmstripOnly');
+        return APP.store.getState()['features/filmstrip'].visible;
     },
 
     /**
@@ -211,9 +38,9 @@ const Filmstrip = {
         // display should be.
         if (this.isFilmstripVisible() && !interfaceConfig.VERTICAL_FILMSTRIP) {
             return $(`.${this.filmstripContainerClassName}`).outerHeight();
-        } else {
-            return 0;
         }
+
+        return 0;
     },
 
     /**
@@ -221,9 +48,11 @@ const Filmstrip = {
      * @returns {number} width
      */
     getFilmstripWidth() {
-        return this.filmstrip.innerWidth()
-            - parseInt(this.filmstrip.css('paddingLeft'), 10)
-            - parseInt(this.filmstrip.css('paddingRight'), 10);
+        return this.isFilmstripVisible()
+            ? this.filmstrip.outerWidth()
+                - parseInt(this.filmstrip.css('paddingLeft'), 10)
+                - parseInt(this.filmstrip.css('paddingRight'), 10)
+            : 0;
     },
 
     /**
@@ -231,9 +60,13 @@ const Filmstrip = {
      * @returns {*|{localVideo, remoteVideo}}
      */
     calculateThumbnailSize() {
-        let availableSizes = this.calculateAvailableSize();
-        let width = availableSizes.availableWidth;
-        let height = availableSizes.availableHeight;
+        if (shouldDisplayTileView(APP.store.getState())) {
+            return this._calculateThumbnailSizeForTileView();
+        }
+
+        const availableSizes = this.calculateAvailableSize();
+        const width = availableSizes.availableWidth;
+        const height = availableSizes.availableHeight;
 
         return this.calculateThumbnailSizeFromAvailable(width, height);
     },
@@ -245,18 +78,17 @@ const Filmstrip = {
      * @returns {{availableWidth: number, availableHeight: number}}
      */
     calculateAvailableSize() {
-        let availableHeight = interfaceConfig.FILM_STRIP_MAX_HEIGHT;
-        let thumbs = this.getThumbs(true);
-        let numvids = thumbs.remoteThumbs.length;
-
-        let localVideoContainer = $("#localVideoContainer");
+        const state = APP.store.getState();
+        const currentLayout = getCurrentLayout(state);
+        const isHorizontalFilmstripView
+            = currentLayout === LAYOUTS.HORIZONTAL_FILMSTRIP_VIEW;
 
         /**
          * If the videoAreaAvailableWidth is set we use this one to calculate
          * the filmstrip width, because we're probably in a state where the
          * filmstrip size hasn't been updated yet, but it will be.
          */
-        let videoAreaAvailableWidth
+        const videoAreaAvailableWidth
             = UIUtil.getAvailableVideoWidth()
             - this._getFilmstripExtraPanelsWidth()
             - UIUtil.parseCssInt(this.filmstrip.css('right'), 10)
@@ -266,50 +98,59 @@ const Filmstrip = {
             - UIUtil.parseCssInt(this.filmstrip.css('borderRightWidth'), 10)
             - 5;
 
+        let availableHeight = interfaceConfig.FILM_STRIP_MAX_HEIGHT;
         let availableWidth = videoAreaAvailableWidth;
 
+        const thumbs = this.getThumbs(true);
+
         // If local thumb is not hidden
-        if(thumbs.localThumb) {
+        if (thumbs.localThumb) {
+            const localVideoContainer = $('#localVideoContainer');
+
             availableWidth = Math.floor(
-                (videoAreaAvailableWidth - (
-                UIUtil.parseCssInt(
-                    localVideoContainer.css('borderLeftWidth'), 10)
-                + UIUtil.parseCssInt(
-                    localVideoContainer.css('borderRightWidth'), 10)
-                + UIUtil.parseCssInt(
-                    localVideoContainer.css('paddingLeft'), 10)
-                + UIUtil.parseCssInt(
-                    localVideoContainer.css('paddingRight'), 10)
-                + UIUtil.parseCssInt(
-                    localVideoContainer.css('marginLeft'), 10)
-                + UIUtil.parseCssInt(
-                    localVideoContainer.css('marginRight'), 10)))
+                videoAreaAvailableWidth - (
+                    UIUtil.parseCssInt(
+                        localVideoContainer.css('borderLeftWidth'), 10)
+                    + UIUtil.parseCssInt(
+                        localVideoContainer.css('borderRightWidth'), 10)
+                    + UIUtil.parseCssInt(
+                        localVideoContainer.css('paddingLeft'), 10)
+                    + UIUtil.parseCssInt(
+                        localVideoContainer.css('paddingRight'), 10)
+                    + UIUtil.parseCssInt(
+                        localVideoContainer.css('marginLeft'), 10)
+                    + UIUtil.parseCssInt(
+                        localVideoContainer.css('marginRight'), 10))
             );
         }
 
-        // If the number of videos is 0 or undefined or we're in vertical
+        // If the number of videos is 0 or undefined or we're not in horizontal
         // filmstrip mode we don't need to calculate further any adjustments
         // to width based on the number of videos present.
-        if (numvids && !interfaceConfig.VERTICAL_FILMSTRIP) {
-            let remoteVideoContainer = thumbs.remoteThumbs.eq(0);
+        const numvids = thumbs.remoteThumbs.length;
+
+        if (numvids && isHorizontalFilmstripView) {
+            const remoteVideoContainer = thumbs.remoteThumbs.eq(0);
+
             availableWidth = Math.floor(
-                (videoAreaAvailableWidth - numvids * (
-                UIUtil.parseCssInt(
-                    remoteVideoContainer.css('borderLeftWidth'), 10)
-                + UIUtil.parseCssInt(
-                    remoteVideoContainer.css('borderRightWidth'), 10)
-                + UIUtil.parseCssInt(
-                    remoteVideoContainer.css('paddingLeft'), 10)
-                + UIUtil.parseCssInt(
-                    remoteVideoContainer.css('paddingRight'), 10)
-                + UIUtil.parseCssInt(
-                    remoteVideoContainer.css('marginLeft'), 10)
-                + UIUtil.parseCssInt(
-                    remoteVideoContainer.css('marginRight'), 10)))
+                videoAreaAvailableWidth - (numvids * (
+                    UIUtil.parseCssInt(
+                        remoteVideoContainer.css('borderLeftWidth'), 10)
+                    + UIUtil.parseCssInt(
+                        remoteVideoContainer.css('borderRightWidth'), 10)
+                    + UIUtil.parseCssInt(
+                        remoteVideoContainer.css('paddingLeft'), 10)
+                    + UIUtil.parseCssInt(
+                        remoteVideoContainer.css('paddingRight'), 10)
+                    + UIUtil.parseCssInt(
+                        remoteVideoContainer.css('marginLeft'), 10)
+                    + UIUtil.parseCssInt(
+                        remoteVideoContainer.css('marginRight'), 10)))
             );
         }
 
-        let maxHeight
+        const maxHeight
+
             // If the MAX_HEIGHT property hasn't been specified
             // we have the static value.
             = Math.min(interfaceConfig.FILM_STRIP_MAX_HEIGHT || 120,
@@ -318,7 +159,10 @@ const Filmstrip = {
         availableHeight
             = Math.min(maxHeight, window.innerHeight - 18);
 
-        return { availableWidth, availableHeight };
+        return {
+            availableHeight,
+            availableWidth
+        };
     },
 
     /**
@@ -331,15 +175,19 @@ const Filmstrip = {
      * @private
      */
     _getFilmstripExtraPanelsWidth() {
-        let className = this.filmstripContainerClassName;
+        const className = this.filmstripContainerClassName;
         let width = 0;
+
         $(`.${className}`)
             .children()
-            .each(function () {
+            .each(function() {
+                /* eslint-disable no-invalid-this */
                 if (this.id !== 'remoteVideos') {
                     width += $(this).outerWidth();
                 }
+                /* eslint-enable no-invalid-this */
             });
+
         return width;
     },
 
@@ -393,16 +241,17 @@ const Filmstrip = {
 
         const remoteThumbsInRow = interfaceConfig.VERTICAL_FILMSTRIP
             ? 0 : this.getThumbs(true).remoteThumbs.length;
-        const remoteLocalWidthRatio = interfaceConfig.REMOTE_THUMBNAIL_RATIO /
-            interfaceConfig.LOCAL_THUMBNAIL_RATIO;
-        const lW = Math.min(availableWidth /
-            (remoteLocalWidthRatio * remoteThumbsInRow + 1), availableHeight *
-            interfaceConfig.LOCAL_THUMBNAIL_RATIO);
+        const remoteLocalWidthRatio = interfaceConfig.REMOTE_THUMBNAIL_RATIO
+            / interfaceConfig.LOCAL_THUMBNAIL_RATIO;
+        const lW = Math.min(availableWidth
+            / ((remoteLocalWidthRatio * remoteThumbsInRow) + 1), availableHeight
+            * interfaceConfig.LOCAL_THUMBNAIL_RATIO);
         const h = lW / interfaceConfig.LOCAL_THUMBNAIL_RATIO;
 
         const remoteVideoWidth = lW * remoteLocalWidthRatio;
 
         let localVideo;
+
         if (interfaceConfig.VERTICAL_FILMSTRIP) {
             localVideo = {
                 thumbWidth: remoteVideoWidth,
@@ -425,98 +274,151 @@ const Filmstrip = {
     },
 
     /**
-     * Resizes thumbnails
-     * @param local
-     * @param remote
-     * @param animate
-     * @param forceUpdate
-     * @returns {Promise}
+     * Calculates the size for thumbnails when in tile view layout.
+     *
+     * @returns {{localVideo, remoteVideo}}
      */
-    resizeThumbnails(local, remote, animate = false, forceUpdate = false) {
-        return new Promise(resolve => {
-            let thumbs = this.getThumbs(!forceUpdate);
-            let promises = [];
+    _calculateThumbnailSizeForTileView() {
+        const tileAspectRatio = 16 / 9;
 
-            if(thumbs.localThumb) {
-                promises.push(new Promise((resolve) => {
-                    thumbs.localThumb.animate({
-                        height: local.thumbHeight,
-                        width: local.thumbWidth
-                    }, this._getAnimateOptions(animate, resolve));
-                }));
-            }
-            if(thumbs.remoteThumbs) {
-                promises.push(new Promise((resolve) => {
-                    thumbs.remoteThumbs.animate({
-                        height: remote.thumbHeight,
-                        width: remote.thumbWidth
-                    }, this._getAnimateOptions(animate, resolve));
-                }));
-            }
-            promises.push(new Promise((resolve) => {
-                // Let CSS take care of height in vertical filmstrip mode.
-                if (interfaceConfig.VERTICAL_FILMSTRIP) {
-                    resolve();
-                } else {
-                    this.filmstrip.animate({
-                        // adds 2 px because of small video 1px border
-                        height: remote.thumbHeight + 2
-                    }, this._getAnimateOptions(animate, resolve));
-                }
-            }));
+        // The distance from the top and bottom of the screen, as set by CSS, to
+        // avoid overlapping UI elements.
+        const topBottomPadding = 200;
 
-            promises.push(new Promise(() => {
-                let { localThumb } = this.getThumbs();
-                let height = localThumb.height();
-                let fontSize = UIUtil.getIndicatorFontSize(height);
-                this.filmstrip.find('.indicator').animate({
-                    fontSize
-                }, this._getAnimateOptions(animate, resolve));
-            }));
+        // Minimum space to keep between the sides of the tiles and the sides
+        // of the window.
+        const sideMargins = 30 * 2;
 
-            if (!animate) {
-                resolve();
-            }
+        const state = APP.store.getState();
 
-            Promise.all(promises).then(resolve);
-        });
-    },
+        const viewWidth = document.body.clientWidth - sideMargins;
+        const viewHeight = document.body.clientHeight - topBottomPadding;
 
-    /**
-     * Helper method. Returns options for jQuery animation
-     * @param animate {Boolean} - animation flag
-     * @param cb {Function} - complete callback
-     * @returns {Object} - animation options object
-     * @private
-     */
-    _getAnimateOptions(animate, cb = $.noop) {
+        const {
+            columns,
+            visibleRows
+        } = getTileViewGridDimensions(state, getMaxColumnCount());
+        const initialWidth = viewWidth / columns;
+        const aspectRatioHeight = initialWidth / tileAspectRatio;
+
+        const heightOfEach = Math.min(
+            aspectRatioHeight,
+            viewHeight / visibleRows);
+        const widthOfEach = tileAspectRatio * heightOfEach;
+
         return {
-            queue: false,
-            duration: animate ? 500 : 0,
-            complete: cb
+            localVideo: {
+                thumbWidth: widthOfEach,
+                thumbHeight: heightOfEach
+            },
+            remoteVideo: {
+                thumbWidth: widthOfEach,
+                thumbHeight: heightOfEach
+            }
         };
     },
 
     /**
+     * Resizes thumbnails
+     * @param local
+     * @param remote
+     * @param forceUpdate
+     * @returns {Promise}
+     */
+    // eslint-disable-next-line max-params
+    resizeThumbnails(local, remote, forceUpdate = false) {
+        const state = APP.store.getState();
+
+        if (shouldDisplayTileView(state)) {
+            // The size of the side margins for each tile as set in CSS.
+            const sideMargins = 10 * 2;
+            const {
+                columns,
+                rows
+            } = getTileViewGridDimensions(state, getMaxColumnCount());
+            const hasOverflow = rows > columns;
+
+            // Width is set so that the flex layout can automatically wrap
+            // tiles onto new rows.
+            this.filmstripRemoteVideos.css({
+                width: (local.thumbWidth * columns) + (columns * sideMargins)
+            });
+
+            this.filmstripRemoteVideos.toggleClass('has-overflow', hasOverflow);
+        } else {
+            this.filmstripRemoteVideos.css('width', '');
+        }
+
+        const thumbs = this.getThumbs(!forceUpdate);
+
+        if (thumbs.localThumb) {
+            // eslint-disable-next-line no-shadow
+            thumbs.localThumb.css({
+                display: 'inline-block',
+                height: `${local.thumbHeight}px`,
+                'min-height': `${local.thumbHeight}px`,
+                'min-width': `${local.thumbWidth}px`,
+                width: `${local.thumbWidth}px`
+            });
+        }
+
+        if (thumbs.remoteThumbs) {
+            thumbs.remoteThumbs.css({
+                display: 'inline-block',
+                height: `${remote.thumbHeight}px`,
+                'min-height': `${remote.thumbHeight}px`,
+                'min-width': `${remote.thumbWidth}px`,
+                width: `${remote.thumbWidth}px`
+            });
+        }
+
+        const currentLayout = getCurrentLayout(APP.store.getState());
+
+        // Let CSS take care of height in vertical filmstrip mode.
+        if (currentLayout === LAYOUTS.VERTICAL_FILMSTRIP_VIEW) {
+            $('#filmstripLocalVideo').css({
+                // adds 4 px because of small video 2px border
+                width: `${local.thumbWidth + 4}px`
+            });
+        } else if (currentLayout === LAYOUTS.HORIZONTAL_FILMSTRIP_VIEW) {
+            this.filmstrip.css({
+                // adds 4 px because of small video 2px border
+                height: `${remote.thumbHeight + 4}px`
+            });
+        }
+
+        const { localThumb } = this.getThumbs();
+        const height = localThumb ? localThumb.height() : 0;
+        const fontSize = UIUtil.getIndicatorFontSize(height);
+
+        this.filmstrip.find('.indicator').css({
+            'font-size': `${fontSize}px`
+        });
+    },
+
+    /**
      * Returns thumbnails of the filmstrip
-     * @param only_visible
+     * @param onlyVisible
      * @returns {object} thumbnails
      */
-    getThumbs(only_visible = false) {
+    getThumbs(onlyVisible = false) {
         let selector = 'span';
-        if (only_visible) {
+
+        if (onlyVisible) {
             selector += ':visible';
         }
 
-        let localThumb = $("#localVideoContainer");
-        let remoteThumbs = this.filmstripRemoteVideos.children(selector);
+        const localThumb = $('#localVideoContainer');
+        const remoteThumbs = this.filmstripRemoteVideos.children(selector);
 
         // Exclude the local video container if it has been hidden.
-        if (localThumb.hasClass("hidden")) {
+        if (localThumb.hasClass('hidden')) {
             return { remoteThumbs };
-        } else {
-            return { remoteThumbs, localThumb };
         }
+
+        return { remoteThumbs,
+            localThumb };
+
     }
 };
 

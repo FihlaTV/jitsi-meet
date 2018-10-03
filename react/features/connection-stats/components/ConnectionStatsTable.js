@@ -1,3 +1,4 @@
+import PropTypes from 'prop-types';
 import React, { Component } from 'react';
 
 import { translate } from '../../base/i18n';
@@ -21,7 +22,7 @@ class ConnectionStatsTable extends Component {
          *     upload: Number
          * }}
          */
-        bandwidth: React.PropTypes.object,
+        bandwidth: PropTypes.object,
 
         /**
          * Statistics related to bitrate.
@@ -30,25 +31,41 @@ class ConnectionStatsTable extends Component {
          *     upload: Number
          * }}
          */
-        bitrate: React.PropTypes.object,
+        bitrate: PropTypes.object,
 
         /**
-         * Statistics related to framerates for each ssrc.
+         * The number of bridges (aka media servers) currently used in the
+         * conference.
+         */
+        bridgeCount: PropTypes.number,
+
+        /**
+         * A message describing the connection quality.
+         */
+        connectionSummary: PropTypes.string,
+
+        /**
+         * The end-to-end round-trip-time.
+         */
+        e2eRtt: PropTypes.number,
+
+        /**
+         * Statistics related to frame rates for each ssrc.
          * {{
          *     [ ssrc ]: Number
          * }}
          */
-        framerate: React.PropTypes.object,
+        framerate: PropTypes.object,
 
         /**
-         * Whether or not the statitics are for local video.
+         * Whether or not the statistics are for local video.
          */
-        isLocalVideo: React.PropTypes.bool,
+        isLocalVideo: PropTypes.bool,
 
         /**
          * Callback to invoke when the show additional stats link is clicked.
          */
-        onShowMore: React.PropTypes.func,
+        onShowMore: PropTypes.func,
 
         /**
          * Statistics related to packet loss.
@@ -57,7 +74,12 @@ class ConnectionStatsTable extends Component {
          *     upload: Number
          * }}
          */
-        packetLoss: React.PropTypes.object,
+        packetLoss: PropTypes.object,
+
+        /**
+         * The region that we think the client is in.
+         */
+        region: PropTypes.string,
 
         /**
          * Statistics related to display resolutions for each ssrc.
@@ -68,23 +90,28 @@ class ConnectionStatsTable extends Component {
          *     }
          * }}
          */
-        resolution: React.PropTypes.object,
+        resolution: PropTypes.object,
+
+        /**
+         * The region of the media server that we are connected to.
+         */
+        serverRegion: PropTypes.string,
 
         /**
          * Whether or not additional stats about bandwidth and transport should
          * be displayed. Will not display even if true for remote participants.
          */
-        shouldShowMore: React.PropTypes.bool,
+        shouldShowMore: PropTypes.bool,
 
         /**
          * Invoked to obtain translated strings.
          */
-        t: React.PropTypes.func,
+        t: PropTypes.func,
 
         /**
          * Statistics related to transports.
          */
-        transport: React.PropTypes.array
+        transport: PropTypes.array
     };
 
     /**
@@ -108,7 +135,7 @@ class ConnectionStatsTable extends Component {
 
     /**
      * Creates a table as ReactElement that will display additional statistics
-     * related to bandwidth and transport.
+     * related to bandwidth and transport for the local user.
      *
      * @private
      * @returns {ReactElement}
@@ -119,6 +146,7 @@ class ConnectionStatsTable extends Component {
                 <tbody>
                     { this._renderBandwidth() }
                     { this._renderTransport() }
+                    { this._renderRegion() }
                 </tbody>
             </table>
         );
@@ -185,6 +213,100 @@ class ConnectionStatsTable extends Component {
     }
 
     /**
+     * Creates a table row as a ReactElement for displaying a summary message
+     * about the current connection status.
+     *
+     * @private
+     * @returns {ReactElement}
+     */
+    _renderConnectionSummary() {
+        return (
+            <tr className = 'connection-info__status'>
+                <td>
+                    <span>{ this.props.t('connectionindicator.status') }</span>
+                </td>
+                <td>{ this.props.connectionSummary }</td>
+            </tr>
+        );
+    }
+
+    /**
+     * Creates a table row as a ReactElement for displaying end-to-end RTT and
+     * the region.
+     *
+     * @returns {ReactElement}
+     * @private
+     */
+    _renderE2eRtt() {
+        const { e2eRtt, t } = this.props;
+        const str = e2eRtt ? `${e2eRtt.toFixed(0)}ms` : 'N/A';
+
+        return (
+            <tr>
+                <td>
+                    <span>{ t('connectionindicator.e2e_rtt') }</span>
+                </td>
+                <td>{ str }</td>
+            </tr>
+        );
+    }
+
+    /**
+     * Creates a table row as a ReactElement for displaying the "connected to"
+     * information.
+     *
+     * @returns {ReactElement}
+     * @private
+     */
+    _renderRegion() {
+        const { region, serverRegion, t } = this.props;
+        let str = serverRegion;
+
+        if (!serverRegion) {
+            return;
+        }
+
+
+        if (region && serverRegion && region !== serverRegion) {
+            str += ` from ${region}`;
+        }
+
+        return (
+            <tr>
+                <td>
+                    <span>{ t('connectionindicator.connectedTo') }</span>
+                </td>
+                <td>{ str }</td>
+            </tr>
+        );
+    }
+
+    /**
+     * Creates a table row as a ReactElement for displaying the "bridge count"
+     * information.
+     *
+     * @returns {*}
+     * @private
+     */
+    _renderBridgeCount() {
+        const { bridgeCount, t } = this.props;
+
+        // 0 is valid, but undefined/null/NaN aren't.
+        if (!bridgeCount && bridgeCount !== 0) {
+            return;
+        }
+
+        return (
+            <tr>
+                <td>
+                    <span>{ t('connectionindicator.bridgeCount') }</span>
+                </td>
+                <td>{ bridgeCount }</td>
+            </tr>
+        );
+    }
+
+    /**
      * Creates a table row as a ReactElement for displaying frame rate related
      * statistics.
      *
@@ -221,7 +343,6 @@ class ConnectionStatsTable extends Component {
         if (packetLoss) {
             const { download, upload } = packetLoss;
 
-            // eslint-disable-next-line no-extra-parens
             packetLossTableData = (
                 <td>
                     <span className = 'connection-info__download'>
@@ -287,8 +408,8 @@ class ConnectionStatsTable extends Component {
     _renderShowMoreLink() {
         const translationKey
             = this.props.shouldShowMore
-            ? 'connectionindicator.less'
-            : 'connectionindicator.more';
+                ? 'connectionindicator.less'
+                : 'connectionindicator.more';
 
         return (
             <a
@@ -306,13 +427,19 @@ class ConnectionStatsTable extends Component {
      * @returns {ReactElement}
      */
     _renderStatistics() {
+        const isRemoteVideo = !this.props.isLocalVideo;
+
         return (
             <table className = 'connection-info__container'>
                 <tbody>
+                    { this._renderConnectionSummary() }
                     { this._renderBitrate() }
                     { this._renderPacketLoss() }
+                    { isRemoteVideo ? this._renderE2eRtt() : null }
+                    { isRemoteVideo ? this._renderRegion() : null }
                     { this._renderResolution() }
                     { this._renderFrameRate() }
+                    { isRemoteVideo ? null : this._renderBridgeCount() }
                 </tbody>
             </table>
         );
@@ -329,7 +456,6 @@ class ConnectionStatsTable extends Component {
         const { t, transport } = this.props;
 
         if (!transport || transport.length === 0) {
-            // eslint-disable-next-line no-extra-parens
             const NA = (
                 <tr key = 'address'>
                     <td>
@@ -476,6 +602,10 @@ class ConnectionStatsTable extends Component {
  * @returns {string}
  */
 function getIP(value) {
+    if (!value) {
+        return '';
+    }
+
     return value.substring(0, value.lastIndexOf(':'));
 }
 
@@ -488,6 +618,10 @@ function getIP(value) {
  * @returns {string}
  */
 function getPort(value) {
+    if (!value) {
+        return '';
+    }
+
     return value.substring(value.lastIndexOf(':') + 1, value.length);
 }
 

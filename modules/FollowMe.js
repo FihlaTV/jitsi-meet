@@ -1,3 +1,5 @@
+/* global APP */
+
 /*
  * Copyright @ 2015 Atlassian Pty Ltd
  *
@@ -13,8 +15,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const logger = require("jitsi-meet-logger").getLogger(__filename);
+const logger = require('jitsi-meet-logger').getLogger(__filename);
 
+import {
+    getPinnedParticipant,
+    pinParticipant
+} from '../react/features/base/participants';
+import { setTileView } from '../react/features/video-layout';
 import UIEvents from '../service/UI/UIEvents';
 import VideoLayout from './UI/videolayout/VideoLayout';
 
@@ -23,7 +30,7 @@ import VideoLayout from './UI/videolayout/VideoLayout';
  * {State} for the local state at the time of this writing) of a {FollowMe}
  * (instance) between participants.
  */
-const _COMMAND = "follow-me";
+const _COMMAND = 'follow-me';
 
 /**
  * The timeout after which a follow-me command that has been received will be
@@ -50,37 +57,89 @@ class State {
      * the property, the old value of the property before the change, and the
      * new value of the property after the change.
      */
-    constructor (propertyChangeCallback) {
+    constructor(propertyChangeCallback) {
         this._propertyChangeCallback = propertyChangeCallback;
     }
 
-    get filmstripVisible () { return this._filmstripVisible; }
+    /**
+     *
+     */
+    get filmstripVisible() {
+        return this._filmstripVisible;
+    }
 
-    set filmstripVisible (b) {
-        var oldValue = this._filmstripVisible;
+    /**
+     *
+     */
+    set filmstripVisible(b) {
+        const oldValue = this._filmstripVisible;
+
         if (oldValue !== b) {
             this._filmstripVisible = b;
             this._firePropertyChange('filmstripVisible', oldValue, b);
         }
     }
 
-    get nextOnStage() { return this._nextOnStage; }
+    /**
+     *
+     */
+    get nextOnStage() {
+        return this._nextOnStage;
+    }
 
+    /**
+     *
+     */
     set nextOnStage(id) {
-        var oldValue = this._nextOnStage;
+        const oldValue = this._nextOnStage;
+
         if (oldValue !== id) {
             this._nextOnStage = id;
             this._firePropertyChange('nextOnStage', oldValue, id);
         }
     }
 
-    get sharedDocumentVisible () { return this._sharedDocumentVisible; }
+    /**
+     *
+     */
+    get sharedDocumentVisible() {
+        return this._sharedDocumentVisible;
+    }
 
-    set sharedDocumentVisible (b) {
-        var oldValue = this._sharedDocumentVisible;
+    /**
+     *
+     */
+    set sharedDocumentVisible(b) {
+        const oldValue = this._sharedDocumentVisible;
+
         if (oldValue !== b) {
             this._sharedDocumentVisible = b;
             this._firePropertyChange('sharedDocumentVisible', oldValue, b);
+        }
+    }
+
+    /**
+     * A getter for this object instance to know the state of tile view.
+     *
+     * @returns {boolean} True if tile view is enabled.
+     */
+    get tileViewEnabled() {
+        return this._tileViewEnabled;
+    }
+
+    /**
+     * A setter for {@link tileViewEnabled}. Fires a property change event for
+     * other participants to follow.
+     *
+     * @param {boolean} b - Whether or not tile view is enabled.
+     * @returns {void}
+     */
+    set tileViewEnabled(b) {
+        const oldValue = this._tileViewEnabled;
+
+        if (oldValue !== b) {
+            this._tileViewEnabled = b;
+            this._firePropertyChange('tileViewEnabled', oldValue, b);
         }
     }
 
@@ -93,10 +152,12 @@ class State {
      * @param oldValue the value of {property} before the change
      * @param newValue the value of {property} after the change
      */
-    _firePropertyChange (property, oldValue, newValue) {
-        var propertyChangeCallback = this._propertyChangeCallback;
-        if (propertyChangeCallback)
+    _firePropertyChange(property, oldValue, newValue) {
+        const propertyChangeCallback = this._propertyChangeCallback;
+
+        if (propertyChangeCallback) {
             propertyChangeCallback(property, oldValue, newValue);
+        }
     }
 }
 
@@ -118,7 +179,7 @@ class FollowMe {
      * destination (model/state) to receive from the remote moderator if the
      * local participant is not the moderator
      */
-    constructor (conference, UI) {
+    constructor(conference, UI) {
         this._conference = conference;
         this._UI = UI;
         this.nextOnStageTimer = 0;
@@ -150,9 +211,14 @@ class FollowMe {
         this._nextOnStage(pinnedId, Boolean(pinnedId));
 
         // check whether shared document is enabled/initialized
-        if(this._UI.getSharedDocumentManager())
+        if (this._UI.getSharedDocumentManager()) {
             this._sharedDocumentToggled
                 .bind(this, this._UI.getSharedDocumentManager().isVisible());
+        }
+
+        this._tileViewToggled.bind(
+            this,
+            APP.store.getState()['features/video-layout'].tileViewEnabled);
     }
 
     /**
@@ -162,34 +228,41 @@ class FollowMe {
      * the states of interest.
      * @private
      */
-    _addFollowMeListeners () {
+    _addFollowMeListeners() {
         this.filmstripEventHandler = this._filmstripToggled.bind(this);
         this._UI.addListener(UIEvents.TOGGLED_FILMSTRIP,
                             this.filmstripEventHandler);
 
-        var self = this;
-        this.pinnedEndpointEventHandler = function (videoId, isPinned) {
+        const self = this;
+
+        this.pinnedEndpointEventHandler = function(videoId, isPinned) {
             self._nextOnStage(videoId, isPinned);
         };
         this._UI.addListener(UIEvents.PINNED_ENDPOINT,
                             this.pinnedEndpointEventHandler);
 
         this.sharedDocEventHandler = this._sharedDocumentToggled.bind(this);
-        this._UI.addListener( UIEvents.TOGGLED_SHARED_DOCUMENT,
+        this._UI.addListener(UIEvents.TOGGLED_SHARED_DOCUMENT,
                             this.sharedDocEventHandler);
+
+        this.tileViewEventHandler = this._tileViewToggled.bind(this);
+        this._UI.addListener(UIEvents.TOGGLED_TILE_VIEW,
+              this.tileViewEventHandler);
     }
 
     /**
      * Removes all follow me listeners.
      * @private
      */
-    _removeFollowMeListeners () {
+    _removeFollowMeListeners() {
         this._UI.removeListener(UIEvents.TOGGLED_FILMSTRIP,
                                 this.filmstripEventHandler);
         this._UI.removeListener(UIEvents.TOGGLED_SHARED_DOCUMENT,
                                 this.sharedDocEventHandler);
         this._UI.removeListener(UIEvents.PINNED_ENDPOINT,
                                 this.pinnedEndpointEventHandler);
+        this._UI.removeListener(UIEvents.TOGGLED_TILE_VIEW,
+                                this.tileViewEventHandler);
     }
 
     /**
@@ -198,13 +271,13 @@ class FollowMe {
      * @param enable {true} to enable the follow me functionality, {false} -
      * to disable it
      */
-    enableFollowMe (enable) {
+    enableFollowMe(enable) {
         if (enable) {
             this._setFollowMeInitialState();
             this._addFollowMeListeners();
-        }
-        else
+        } else {
             this._removeFollowMeListeners();
+        }
     }
 
     /**
@@ -214,7 +287,7 @@ class FollowMe {
      * @param filmstripVisible {Boolean} {true} if the filmstrip was shown (as a
      * result of the toggle) or {false} if the filmstrip was hidden
      */
-    _filmstripToggled (filmstripVisible) {
+    _filmstripToggled(filmstripVisible) {
         this._local.filmstripVisible = filmstripVisible;
     }
 
@@ -225,8 +298,20 @@ class FollowMe {
      * @param sharedDocumentVisible {Boolean} {true} if the shared document was
      * shown (as a result of the toggle) or {false} if it was hidden
      */
-    _sharedDocumentToggled (sharedDocumentVisible) {
+    _sharedDocumentToggled(sharedDocumentVisible) {
         this._local.sharedDocumentVisible = sharedDocumentVisible;
+    }
+
+    /**
+     * Notifies this instance that the tile view mode has been enabled or
+     * disabled.
+     *
+     * @param {boolean} enabled - True if tile view has been enabled, false
+     * if has been disabled.
+     * @returns {void}
+     */
+    _tileViewToggled(enabled) {
+        this._local.tileViewEnabled = enabled;
     }
 
     /**
@@ -237,13 +322,16 @@ class FollowMe {
      * unpinned
      * @private
      */
-    _nextOnStage (videoId, isPinned) {
-        if (!this._conference.isModerator)
+    _nextOnStage(videoId, isPinned) {
+        if (!this._conference.isModerator) {
             return;
+        }
 
-        var nextOnStage = null;
-        if(isPinned)
+        let nextOnStage = null;
+
+        if (isPinned) {
             nextOnStage = videoId;
+        }
 
         this._local.nextOnStage = nextOnStage;
     }
@@ -251,31 +339,33 @@ class FollowMe {
     /**
      * Sends the follow-me command, when a local property change occurs.
      *
-     * @param property the property name
-     * @param oldValue the old value
-     * @param newValue the new value
      * @private
      */
-    // eslint-disable-next-line no-unused-vars
-    _localPropertyChange (property, oldValue, newValue) {
+    _localPropertyChange() { // eslint-disable-next-line no-unused-vars
         // Only a moderator is allowed to send commands.
         const conference = this._conference;
-        if (!conference.isModerator)
+
+        if (!conference.isModerator) {
             return;
+        }
 
         const commands = conference.commands;
+
         // XXX The "Follow Me" command represents a snapshot of all states
         // which are to be followed so don't forget to removeCommand before
         // sendCommand!
+
         commands.removeCommand(_COMMAND);
         const local = this._local;
+
         commands.sendCommandOnce(
                 _COMMAND,
                 {
                     attributes: {
                         filmstripVisible: local.filmstripVisible,
                         nextOnStage: local.nextOnStage,
-                        sharedDocumentVisible: local.sharedDocumentVisible
+                        sharedDocumentVisible: local.sharedDocumentVisible,
+                        tileViewEnabled: local.tileViewEnabled
                     }
                 });
     }
@@ -289,22 +379,23 @@ class FollowMe {
      * notable idiosyncrasy of the Command(s) API to be mindful of here is that
      * the command may be issued by the local participant.
      */
-    _onFollowMeCommand ({ attributes }, id) {
+    _onFollowMeCommand({ attributes }, id) {
         // We require to know who issued the command because (1) only a
         // moderator is allowed to send commands and (2) a command MUST be
         // issued by a defined commander.
-        if (typeof id === 'undefined')
+        if (typeof id === 'undefined') {
             return;
+        }
 
         // The Command(s) API will send us our own commands and we don't want
         // to act upon them.
-        if (this._conference.isLocalId(id))
+        if (this._conference.isLocalId(id)) {
             return;
+        }
 
-        if (!this._conference.isParticipantModerator(id))
-        {
-            logger.warn('Received follow-me command ' +
-                'not from moderator');
+        if (!this._conference.isParticipantModerator(id)) {
+            logger.warn('Received follow-me command not from moderator');
+
             return;
         }
 
@@ -313,6 +404,7 @@ class FollowMe {
         this._onFilmstripVisible(attributes.filmstripVisible);
         this._onNextOnStage(attributes.nextOnStage);
         this._onSharedDocumentVisible(attributes.sharedDocumentVisible);
+        this._onTileViewEnabled(attributes.tileViewEnabled);
     }
 
     /**
@@ -328,14 +420,16 @@ class FollowMe {
             // attributes, at least) at the time of this writing so take into
             // account that what originated as a Boolean may be a String on
             // receipt.
-            filmstripVisible = (filmstripVisible == 'true');
+            // eslint-disable-next-line eqeqeq, no-param-reassign
+            filmstripVisible = filmstripVisible == 'true';
 
             // FIXME The UI (module) very likely doesn't (want to) expose its
             // eventEmitter as a public field. I'm not sure at the time of this
             // writing whether calling UI.toggleFilmstrip() is acceptable (from
             // a design standpoint) either.
-            if (filmstripVisible !== this._UI.isFilmstripVisible())
+            if (filmstripVisible !== this._UI.isFilmstripVisible()) {
                 this._UI.eventEmitter.emit(UIEvents.TOGGLE_FILMSTRIP);
+            }
         }
     }
 
@@ -347,22 +441,24 @@ class FollowMe {
      * @private
      */
     _onNextOnStage(id) {
-        var clickId = null;
-        var pin;
+        let clickId = null;
+        let pin;
+
         // if there is an id which is not pinned we schedule it for pin only the
         // first time
-        if(typeof id !== 'undefined' && !VideoLayout.isPinned(id)) {
+
+        if (typeof id !== 'undefined' && !VideoLayout.isPinned(id)) {
             clickId = id;
             pin = true;
-        }
-        // if there is no id, but we have a pinned one, let's unpin
-        else if (typeof id == 'undefined' && VideoLayout.getPinnedId()) {
+        } else if (typeof id === 'undefined' && VideoLayout.getPinnedId()) {
+            // if there is no id, but we have a pinned one, let's unpin
             clickId = VideoLayout.getPinnedId();
             pin = false;
         }
 
-        if (clickId)
+        if (clickId) {
             this._pinVideoThumbnailById(clickId, pin);
+        }
     }
 
     /**
@@ -378,12 +474,29 @@ class FollowMe {
             // attributes, at least) at the time of this writing so take into
             // account that what originated as a Boolean may be a String on
             // receipt.
-            sharedDocumentVisible = (sharedDocumentVisible == 'true');
+            // eslint-disable-next-line eqeqeq, no-param-reassign
+            sharedDocumentVisible = sharedDocumentVisible == 'true';
 
             if (sharedDocumentVisible
-                !== this._UI.getSharedDocumentManager().isVisible())
+                !== this._UI.getSharedDocumentManager().isVisible()) {
                 this._UI.getSharedDocumentManager().toggleEtherpad();
+            }
         }
+    }
+
+    /**
+     * Process a tile view enabled / disabled event received from FOLLOW-ME.
+     *
+     * @param {boolean} enabled - Whether or not tile view should be shown.
+     * @private
+     * @returns {void}
+     */
+    _onTileViewEnabled(enabled) {
+        if (typeof enabled === 'undefined') {
+            return;
+        }
+
+        APP.store.dispatch(setTileView(enabled === 'true'));
     }
 
     /**
@@ -394,27 +507,35 @@ class FollowMe {
      * @private
      */
     _pinVideoThumbnailById(clickId, pin) {
-        var self = this;
-        var smallVideo = VideoLayout.getSmallVideo(clickId);
+        const self = this;
+        const smallVideo = VideoLayout.getSmallVideo(clickId);
 
         // If the SmallVideo for the given clickId exists we proceed with the
         // pin/unpin.
         if (smallVideo) {
             this.nextOnStageTimer = 0;
             clearTimeout(this.nextOnStageTimout);
-            if (pin && !VideoLayout.isPinned(clickId)
-                || !pin && VideoLayout.isPinned(clickId))
-                VideoLayout.handleVideoThumbClicked(clickId);
-        }
-        // If there's no SmallVideo object for the given id, lets wait and see
-        // if it's going to be created in the next 30sec.
-        else {
-            this.nextOnStageTimout = setTimeout(function () {
+
+            if (pin) {
+                APP.store.dispatch(pinParticipant(clickId));
+            } else {
+                const { id } = getPinnedParticipant(APP.store.getState()) || {};
+
+                if (id === clickId) {
+                    APP.store.dispatch(pinParticipant(null));
+                }
+            }
+        } else {
+            // If there's no SmallVideo object for the given id, lets wait and
+            // see if it's going to be created in the next 30sec.
+            this.nextOnStageTimout = setTimeout(function() {
                 if (self.nextOnStageTimer > _FOLLOW_ME_RECEIVED_TIMEOUT) {
                     self.nextOnStageTimer = 0;
+
                     return;
                 }
 
+                // eslint-disable-next-line no-invalid-this
                 this.nextOnStageTimer++;
                 self._pinVideoThumbnailById(clickId, pin);
             }, 1000);

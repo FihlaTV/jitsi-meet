@@ -4,6 +4,8 @@
 
 #videospace {
     display: block;
+    height: 100%;
+    width: 100%;
     min-height: 100%;
     position: absolute;
     top: 0px;
@@ -12,14 +14,27 @@
     overflow: hidden;
 }
 
-.video_blurred_container {
+#largeVideoBackgroundContainer,
+.large-video-background {
     height: 100%;
-    filter: blur(40px);
     left: 0;
     overflow: hidden;
     position: absolute;
     top: 0;
     width: 100%;
+
+    &.fit-full-height #largeVideoBackground {
+        height: 100%;
+        width: auto;
+    }
+
+    .fit-full-width #largeVideoBackground {
+        height: auto;
+        width: 100%;
+    }
+}
+#largeVideoBackgroundContainer {
+    filter: blur(40px);
 }
 
 .videocontainer {
@@ -41,9 +56,39 @@
     &__toptoolbar {
         position: absolute;
         left: 0;
-        z-index: $zindex3;
+        pointer-events: none;
+        z-index: $zindex10;
         width: 100%;
         box-sizing: border-box; // Includes the padding in the 100% width.
+
+        /**
+         * FIXME (lenny): Disabling pointer-events is a pretty big sin that
+         * sidesteps the problems. There are z-index wars occurring within
+         * videocontainer and AtlasKit Tooltips rely on their parent z-indexe
+         * being higher than whatever they need to appear over. So set a higher
+         * z-index for the tooltip containers but make any empty space not block
+         * mouse overs for various mouseover triggers.
+         */
+        pointer-events: none;
+
+        * {
+            pointer-events: auto;
+        }
+
+        .indicator-container {
+            display: inline-block;
+            float: left;
+            pointer-events: all;
+        }
+
+        /**
+         * Need to overwrite the background for the top toolbar dark theme div
+         * wrapper needed before we're able to move all top toolbar indicators
+         * creation to react.
+         */
+        .ckAJgx {
+            background: none;
+        }
     }
 
     &__toolbar {
@@ -66,27 +111,15 @@
          * positioning depends on the trigger (indicator icon).
          */
         .indicator {
+            margin-left: 5px;
             margin-top: $toolbarIconMargin;
         }
 
-        .indicator:nth-child(1) {
+        .indicator-container:nth-child(1) .indicator {
             margin-left: $toolbarIconMargin;
         }
 
-        .connection-indicator,
-        span.indicator {
-            margin-right: em(5, 8);
-        }
-
-        span.indicator {
-            display: none;
-
-            &:last-child {
-                margin-right: 0;
-            }
-        }
-
-        .connection-indicator-container {
+        .indicator-container {
             display: inline-block;
             vertical-align: top;
 
@@ -96,7 +129,7 @@
         }
 
         .connection-indicator,
-        span.indicator {
+        .indicator {
             position: relative;
             font-size: 8px;
             text-align: center;
@@ -120,16 +153,11 @@
                 left: 0;
                 @include transform(translate(0, -50%));
 
-                &_empty
+                &_empty,
+                &_lost
                 {
                     color: #8B8B8B;/*#FFFFFF*/
                     overflow: hidden;
-                }
-
-                &_lost
-                {
-                    color: #8B8B8B;
-                    overflow: visible;
                 }
 
                 &_full
@@ -145,11 +173,14 @@
                 }
             }
 
-            .icon-connection,
-            .icon-connection-lost {
+            .icon-gsm-bars {
                 cursor: pointer;
                 font-size: 1em;
             }
+        }
+
+        .hide-connection-indicator {
+            display: none;
         }
     }
 
@@ -195,6 +226,11 @@
     text-align: center;
 }
 
+#largeVideoContainer {
+    height: 100%;
+    width: 100%;
+}
+
 #largeVideoWrapper {
     box-shadow: 0 0 20px -2px #444;
 }
@@ -234,6 +270,7 @@
 /**
  * Positions video thumbnail display name and editor.
  */
+#alwaysOnTop .displayname,
 .videocontainer .displayname,
 .videocontainer .editdisplayname {
     display: inline-block;
@@ -251,6 +288,15 @@
     white-space: nowrap;
     line-height: $thumbnailToolbarHeight;
     z-index: $zindex2;
+}
+
+#alwaysOnTop .displayname {
+    font-size: 15px;
+    position: inherit;
+    width: 100%;
+    left: 0px;
+    top: 0px;
+    margin-top: 10px;
 }
 
 /**
@@ -307,7 +353,6 @@
     padding: 0;
     border: 0;
     margin: 0px 5px 0px 0px;
-    float: left;
 }
 
 /**
@@ -320,9 +365,17 @@
 /**
  * Toolbar icons positioned on the right.
  */
-.toolbar-icon.right {
-  float: right;
-  margin: 0px 0px 0px 5px;
+.moderator-icon {
+    display: inline-block;
+
+    &.right {
+        float: right;
+        margin: 0px 0px 0px 5px;
+    }
+
+    .toolbar-icon {
+        margin: 0;
+    }
 }
 
 .raisehandindicator {
@@ -330,7 +383,27 @@
 }
 
 .connection-indicator {
-  background: $connectionIndicatorBg;
+    background: $connectionIndicatorBg;
+
+    &.status-high {
+        background: green;
+    }
+
+    &.status-med {
+        background: #FFD740;
+    }
+
+    &.status-lost {
+        background: gray;
+    }
+
+    &.status-low {
+        background: #BF2117;
+    }
+
+    &.status-other {
+        background: $connectionIndicatorBg;
+    }
 }
 
 .remote-video-menu-trigger,
@@ -340,7 +413,7 @@
     position: absolute;
     top: 0px;
     right: 0;
-    z-index: $zindex3;
+    z-index: $zindex2;
     width: 18px;
     height: 13px;
     color: #FFF;
@@ -464,34 +537,24 @@
     width: auto;
 }
 
+#videoNotAvailableScreen {
+    text-align: center;
+    #avatarContainer {
+        height: 50vh;
+        display:inline-block;
+        margin-top: 25vh;
+
+        #avatar {
+            border-radius: 50%;
+            height: 100%;
+        }
+    }
+}
+
 .sharedVideoAvatar {
     height: 100%;
     width: 100%;
     object-fit: cover;
-}
-
-.noMic {
-    position: absolute;
-    border-radius: 8px;
-    z-index: $zindex1;
-    width: 100%;
-    height: 100%;
-    background-image: url("../images/noMic.png");
-    background-color: #000;
-    background-repeat: no-repeat;
-    background-position: center;
-}
-
-.noVideo {
-    position: absolute;
-    border-radius: 8px;
-    z-index: $zindex1;
-    width: 100%;
-    height: 100%;
-    background-image: url("../images/noVideo.png");
-    background-color: #000;
-    background-repeat: no-repeat;
-    background-position: center;
 }
 
 .videoMessageFilter {
@@ -540,7 +603,6 @@
     padding-left: 10px;
     padding-right: 10px;
 }
-#remotePresenceMessage .no-presence,
 #remoteConnectionMessage {
     display: none;
 }
@@ -561,4 +623,111 @@
                     0px 1px 1px rgba(0,0,0,0.3),
                     1px 0px 1px rgba(0,0,0,0.3),
                     0px 0px 1px rgba(0,0,0,0.3);
+}
+
+.display-avatar-with-name {
+    .avatar-container {
+        visibility: visible;
+    }
+
+    .displayNameContainer {
+        visibility: visible;
+    }
+
+    .videocontainer__hoverOverlay {
+        visibility: visible;
+    }
+
+    video {
+        visibility: hidden;
+    }
+}
+
+.display-name-on-black {
+    .avatar-container {
+        visibility: hidden;
+    }
+
+    .displayNameContainer {
+        visibility: visible;
+    }
+
+    .videocontainer__hoverOverlay {
+        visibility: hidden;
+    }
+
+    video {
+        opacity: 0.2;
+        visibility: visible;
+    }
+}
+
+.display-video {
+    .avatar-container {
+        visibility: hidden;
+    }
+
+    .displayNameContainer {
+        visibility: hidden;
+    }
+
+    .videocontainer__hoverOverlay {
+        visibility: hidden;
+    }
+
+    video {
+        visibility: visible;
+    }
+}
+
+.display-name-on-video {
+    .avatar-container {
+        visibility: hidden;
+    }
+
+    .displayNameContainer {
+        visibility: visible;
+    }
+
+    .videocontainer__hoverOverlay {
+        visibility: visible;
+    }
+
+    video {
+        visibility: visible;
+    }
+}
+
+.display-avatar-only {
+    .avatar-container {
+        visibility: visible;
+    }
+
+    .displayNameContainer {
+        visibility: hidden;
+    }
+
+    .videocontainer__hoverOverlay {
+        visibility: hidden;
+    }
+
+    video {
+        visibility: hidden;
+    }
+}
+
+.presence-label {
+    color: $participantNameColor;
+    font-size: 12px;
+    font-weight: 100;
+    left: 0;
+    margin: 0 auto;
+    overflow: hidden;
+    pointer-events: none;
+    right: 0;
+    text-align: center;
+    text-overflow: ellipsis;
+    top: calc(50% + 30px);
+    white-space: nowrap;
+    width: 100%;
 }

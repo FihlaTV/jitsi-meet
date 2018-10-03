@@ -1,5 +1,6 @@
 /* @flow */
 
+import PropTypes from 'prop-types';
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
 
@@ -8,7 +9,7 @@ import { translate } from '../../../i18n';
 declare var interfaceConfig: Object;
 
 /**
- * The CSS style of the element with CSS class <tt>rightwatermark</tt>.
+ * The CSS style of the element with CSS class {@code rightwatermark}.
  *
  * @private
  */
@@ -20,7 +21,12 @@ const _RIGHT_WATERMARK_STYLE = {
  * A Web Component which renders watermarks such as Jits, brand, powered by,
  * etc.
  */
-class Watermarks extends Component {
+class Watermarks extends Component<*, *> {
+    static propTypes = {
+        _isGuest: PropTypes.bool,
+        t: PropTypes.func
+    };
+
     state = {
         brandWatermarkLink: String,
         jitsiWatermarkLink: String,
@@ -99,7 +105,7 @@ class Watermarks extends Component {
         let reactElement = null;
 
         if (this.state.showBrandWatermark) {
-            reactElement = ( // eslint-disable-line no-extra-parens
+            reactElement = (
                 <div
                     className = 'watermark rightwatermark'
                     style = { _RIGHT_WATERMARK_STYLE } />
@@ -108,7 +114,7 @@ class Watermarks extends Component {
             const { brandWatermarkLink } = this.state;
 
             if (brandWatermarkLink) {
-                reactElement = ( // eslint-disable-line no-extra-parens
+                reactElement = (
                     <a
                         href = { brandWatermarkLink }
                         target = '_new'>
@@ -138,7 +144,7 @@ class Watermarks extends Component {
             const { jitsiWatermarkLink } = this.state;
 
             if (jitsiWatermarkLink) {
-                reactElement = ( // eslint-disable-line no-extra-parens
+                reactElement = (
                     <a
                         href = { jitsiWatermarkLink }
                         target = '_new'>
@@ -184,7 +190,7 @@ class Watermarks extends Component {
  * }}
  */
 function _mapStateToProps(state) {
-    const { isGuest } = state['features/jwt'];
+    const { isGuest } = state['features/base/jwt'];
 
     return {
         /**

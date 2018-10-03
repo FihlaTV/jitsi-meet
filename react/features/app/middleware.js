@@ -1,19 +1,18 @@
+// @flow
+
 import { SET_ROOM } from '../base/conference';
 import {
     CONNECTION_ESTABLISHED,
-    getURLWithoutParams,
-    SET_LOCATION_URL
+    getURLWithoutParams
 } from '../base/connection';
 import { MiddlewareRegistry } from '../base/redux';
-import { createInitialLocalTracks, destroyLocalTracks } from '../base/tracks';
+
+import { _getRouteToRender } from './getRouteToRender';
 
 MiddlewareRegistry.register(store => next => action => {
     switch (action.type) {
     case CONNECTION_ESTABLISHED:
         return _connectionEstablished(store, next, action);
-
-    case SET_LOCATION_URL:
-        return _setLocationURL(store, next, action);
 
     case SET_ROOM:
         return _setRoom(store, next, action);
@@ -71,59 +70,11 @@ function _connectionEstablished(store, next, action) {
  * @private
  * @returns {void}
  */
-function _navigate({ dispatch, getState }) {
+function _navigate({ getState }) {
     const state = getState();
-    const { app, getRouteToRender } = state['features/app'];
-    const routeToRender = getRouteToRender && getRouteToRender(state);
+    const { app } = state['features/base/app'];
 
-    // FIXME The following is logic specific to the user experience of the
-    // mobile/React Native app. Firstly, I don't like that it's here at all.
-    // Secondly, I copied the mobile/React Native detection from
-    // react/features/base/config/reducer.js because I couldn't iron out an
-    // abstraction. Because of the first point, I'm leaving the second point
-    // unresolved to attract attention to the fact that the following needs more
-    // thinking.
-    if (navigator.product === 'ReactNative') {
-        // Create/destroy the local tracks as needed: create them the first time
-        // we are going to render an actual route (be that the WelcomePage or
-        // the Conference).
-        //
-        // When the WelcomePage is disabled, the app will transition to the
-        // null/undefined route. Detect these transitions and create/destroy the
-        // local tracks so the camera doesn't stay open if the app is not
-        // rendering any component.
-        if (typeof routeToRender === 'undefined' || routeToRender === null) {
-            // Destroy the local tracks if there is no route to render and there
-            // is no WelcomePage.
-            app.props.welcomePageEnabled || dispatch(destroyLocalTracks());
-        } else {
-            // Create the local tracks if they haven't been created yet.
-            state['features/base/tracks'].some(t => t.local)
-                || dispatch(createInitialLocalTracks());
-        }
-    }
-
-    return app._navigate(routeToRender);
-}
-
-/**
- * Notifies the feature app that the action {@link SET_LOCATION_URL} is being
- * dispatched within a specific redux {@code store}.
- *
- * @param {Store} store - The redux store in which the specified {@code action}
- * is being dispatched.
- * @param {Dispatch} next - The redux {@code dispatch} function to dispatch the
- * specified {@code action} to the specified {@code store}.
- * @param {Action} action - The redux action, {@code SET_LOCATION_URL}, which is
- * being dispatched in the specified {@code store}.
- * @private
- * @returns {Object} The new state that is the result of the reduction of the
- * specified {@code action}.
- */
-function _setLocationURL({ getState }, next, action) {
-    return (
-        getState()['features/app'].app._navigate(undefined)
-            .then(() => next(action)));
+    _getRouteToRender(state).then(route => app._navigate(route));
 }
 
 /**

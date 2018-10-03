@@ -15,7 +15,8 @@ export const CONNECTION_DISCONNECTED = Symbol('CONNECTION_DISCONNECTED');
  *
  * {
  *     type: CONNECTION_ESTABLISHED,
- *     connection: JitsiConnection
+ *     connection: JitsiConnection,
+ *     timeEstablished: number,
  * }
  */
 export const CONNECTION_ESTABLISHED = Symbol('CONNECTION_ESTABLISHED');
@@ -26,8 +27,7 @@ export const CONNECTION_ESTABLISHED = Symbol('CONNECTION_ESTABLISHED');
  * {
  *     type: CONNECTION_FAILED,
  *     connection: JitsiConnection,
- *     error: string,
- *     message: string
+ *     error: Object | string
  * }
  */
 export const CONNECTION_FAILED = Symbol('CONNECTION_FAILED');

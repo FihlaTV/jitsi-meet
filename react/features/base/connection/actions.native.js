@@ -1,11 +1,15 @@
-/* @flow */
+// @flow
 
 import _ from 'lodash';
 import type { Dispatch } from 'redux';
 
-import { conferenceWillLeave } from '../conference';
+import {
+    conferenceLeft,
+    conferenceWillLeave,
+    getCurrentConference
+} from '../conference';
 import JitsiMeetJS, { JitsiConnectionEvents } from '../lib-jitsi-meet';
-import { parseStandardURIString } from '../util';
+import { parseURIString } from '../util';
 
 import {
     CONNECTION_DISCONNECTED,
@@ -15,16 +19,67 @@ import {
     SET_LOCATION_URL
 } from './actionTypes';
 
+const logger = require('jitsi-meet-logger').getLogger(__filename);
+
+/**
+ * The error structure passed to the {@link connectionFailed} action.
+ *
+ * Note there was an intention to make the error resemble an Error instance (to
+ * the extent that jitsi-meet needs it).
+ */
+export type ConnectionFailedError = {
+
+    /**
+     * The invalid credentials that were used to authenticate and the
+     * authentication failed.
+     */
+    credentials?: {
+
+        /**
+         * The XMPP user's ID.
+         */
+        jid: string,
+
+        /**
+         * The XMPP user's password.
+         */
+        password: string
+    },
+
+    /**
+     * The details about the connection failed event.
+     */
+    details?: Object,
+
+    /**
+     * Error message.
+     */
+    message?: string,
+
+    /**
+     * One of {@link JitsiConnectionError} constants (defined in
+     * lib-jitsi-meet).
+     */
+    name: string,
+
+    /**
+     * Indicates whether this event is recoverable or not.
+     */
+    recoverable?: boolean
+};
+
 /**
  * Opens new connection.
  *
+ * @param {string} [id] - The XMPP user's ID (e.g. user@server.com).
+ * @param {string} [password] - The XMPP user's password.
  * @returns {Function}
  */
-export function connect() {
+export function connect(id: ?string, password: ?string) {
     return (dispatch: Dispatch<*>, getState: Function) => {
         const state = getState();
         const options = _constructOptions(state);
-        const { issuer, jwt } = state['features/jwt'];
+        const { issuer, jwt } = state['features/base/jwt'];
         const connection
             = new JitsiMeetJS.JitsiConnection(
                 options.appId,
@@ -43,58 +98,77 @@ export function connect() {
             JitsiConnectionEvents.CONNECTION_FAILED,
             _onConnectionFailed);
 
-        connection.connect();
+        return connection.connect({
+            id,
+            password
+        });
 
         /**
-         * Dispatches CONNECTION_DISCONNECTED action when connection is
+         * Dispatches {@code CONNECTION_DISCONNECTED} action when connection is
          * disconnected.
          *
          * @param {string} message - Disconnect reason.
-         * @returns {void}
          * @private
+         * @returns {void}
          */
         function _onConnectionDisconnected(message: string) {
-            connection.removeEventListener(
-                JitsiConnectionEvents.CONNECTION_DISCONNECTED,
-                _onConnectionDisconnected);
-
+            unsubscribe();
             dispatch(_connectionDisconnected(connection, message));
         }
 
         /**
          * Resolves external promise when connection is established.
          *
-         * @returns {void}
          * @private
+         * @returns {void}
          */
         function _onConnectionEstablished() {
-            unsubscribe();
-            dispatch(connectionEstablished(connection));
+            connection.removeEventListener(
+                JitsiConnectionEvents.CONNECTION_ESTABLISHED,
+                _onConnectionEstablished);
+            dispatch(connectionEstablished(connection, Date.now()));
         }
 
         /**
          * Rejects external promise when connection fails.
          *
          * @param {JitsiConnectionErrors} err - Connection error.
-         * @returns {void}
+         * @param {string} [msg] - Error message supplied by lib-jitsi-meet.
+         * @param {Object} [credentials] - The invalid credentials that were
+         * used to authenticate and the authentication failed.
+         * @param {string} [credentials.jid] - The XMPP user's ID.
+         * @param {string} [credentials.password] - The XMPP user's password.
+         * @param {Object} details - Additional information about the error.
          * @private
+         * @returns {void}
          */
-        function _onConnectionFailed(err) {
+        function _onConnectionFailed( // eslint-disable-line max-params
+                err: string,
+                msg: string,
+                credentials: Object,
+                details: Object) {
             unsubscribe();
-            console.error('CONNECTION FAILED:', err);
-            dispatch(connectionFailed(connection, err));
+            dispatch(
+                connectionFailed(
+                    connection, {
+                        credentials,
+                        details,
+                        name: err,
+                        message: msg
+                    }
+                ));
         }
 
         /**
-         * Unsubscribes connection instance from CONNECTION_ESTABLISHED
-         * and CONNECTION_FAILED events.
+         * Unsubscribe the connection instance from
+         * {@code CONNECTION_DISCONNECTED} and {@code CONNECTION_FAILED} events.
          *
          * @returns {void}
          */
         function unsubscribe() {
             connection.removeEventListener(
-                JitsiConnectionEvents.CONNECTION_ESTABLISHED,
-                _onConnectionEstablished);
+                JitsiConnectionEvents.CONNECTION_DISCONNECTED,
+                _onConnectionDisconnected);
             connection.removeEventListener(
                 JitsiConnectionEvents.CONNECTION_FAILED,
                 _onConnectionFailed);
@@ -105,7 +179,8 @@ export function connect() {
 /**
  * Create an action for when the signaling connection has been lost.
  *
- * @param {JitsiConnection} connection - The JitsiConnection which disconnected.
+ * @param {JitsiConnection} connection - The {@code JitsiConnection} which
+ * disconnected.
  * @param {string} message - Error message.
  * @private
  * @returns {{
@@ -123,9 +198,62 @@ function _connectionDisconnected(connection: Object, message: string) {
 }
 
 /**
+ * Create an action for when the signaling connection has been established.
+ *
+ * @param {JitsiConnection} connection - The {@code JitsiConnection} which was
+ * established.
+ * @param {number} timeEstablished - The time at which the
+ * {@code JitsiConnection} which was established.
+ * @public
+ * @returns {{
+ *     type: CONNECTION_ESTABLISHED,
+ *     connection: JitsiConnection,
+ *     timeEstablished: number
+ * }}
+ */
+export function connectionEstablished(
+        connection: Object, timeEstablished: number) {
+    return {
+        type: CONNECTION_ESTABLISHED,
+        connection,
+        timeEstablished
+    };
+}
+
+/**
+ * Create an action for when the signaling connection could not be created.
+ *
+ * @param {JitsiConnection} connection - The {@code JitsiConnection} which
+ * failed.
+ * @param {ConnectionFailedError} error - Error.
+ * @public
+ * @returns {{
+ *     type: CONNECTION_FAILED,
+ *     connection: JitsiConnection,
+ *     error: ConnectionFailedError
+ * }}
+ */
+export function connectionFailed(
+        connection: Object,
+        error: ConnectionFailedError) {
+    const { credentials } = error;
+
+    if (credentials && !Object.keys(credentials).length) {
+        error.credentials = undefined;
+    }
+
+    return {
+        type: CONNECTION_FAILED,
+        connection,
+        error
+    };
+}
+
+/**
  * Create an action for when a connection will connect.
  *
- * @param {JitsiConnection} connection - The JitsiConnection which will connect.
+ * @param {JitsiConnection} connection - The {@code JitsiConnection} which will
+ * connect.
  * @private
  * @returns {{
  *     type: CONNECTION_WILL_CONNECT,
@@ -140,50 +268,6 @@ function _connectionWillConnect(connection) {
 }
 
 /**
- * Create an action for when the signaling connection has been established.
- *
- * @param {JitsiConnection} connection - The JitsiConnection which was
- * established.
- * @public
- * @returns {{
- *     type: CONNECTION_ESTABLISHED,
- *     connection: JitsiConnection
- * }}
- */
-export function connectionEstablished(connection: Object) {
-    return {
-        type: CONNECTION_ESTABLISHED,
-        connection
-    };
-}
-
-/**
- * Create an action for when the signaling connection could not be created.
- *
- * @param {JitsiConnection} connection - The JitsiConnection which failed.
- * @param {string} error - Error.
- * @param {string} message - Error message.
- * @public
- * @returns {{
- *     type: CONNECTION_FAILED,
- *     connection: JitsiConnection,
- *     error: string,
- *     message: string
- * }}
- */
-export function connectionFailed(
-        connection: Object,
-        error: string,
-        message: ?string) {
-    return {
-        type: CONNECTION_FAILED,
-        connection,
-        error,
-        message
-    };
-}
-
-/**
  * Constructs options to be passed to the constructor of {@code JitsiConnection}
  * based on the redux state.
  *
@@ -192,18 +276,32 @@ export function connectionFailed(
  * {@code JitsiConnection}.
  */
 function _constructOptions(state) {
-    const defaultOptions = state['features/base/connection'].options;
-    const options = _.merge(
-        {},
-        defaultOptions,
+    // Deep clone the options to make sure we don't modify the object in the
+    // redux store.
+    const options = _.cloneDeep(state['features/base/config']);
 
-        // Lib-jitsi-meet wants the config passed in multiple places and here is
-        // the latest one I have discovered.
-        state['features/base/config'],
-    );
+    // Normalize the BOSH URL.
     let { bosh } = options;
 
     if (bosh) {
+        if (bosh.startsWith('//')) {
+            // By default our config.js doesn't include the protocol.
+            const { locationURL } = state['features/base/connection'];
+
+            bosh = `${locationURL.protocol}${bosh}`;
+        } else if (bosh.startsWith('/')) {
+            // Handle relative URLs, which won't work on mobile.
+            const { locationURL } = state['features/base/connection'];
+            const {
+                protocol,
+                hostname,
+                contextRoot
+            } = parseURIString(locationURL.href);
+
+            // eslint-disable-next-line max-len
+            bosh = `${protocol}//${hostname}${contextRoot || '/'}${bosh.substr(1)}`;
+        }
+
         // Append room to the URL's search.
         const { room } = state['features/base/conference'];
 
@@ -211,16 +309,6 @@ function _constructOptions(state) {
         // lower case at the time of this writing but, unfortunately, they do
         // not ignore case themselves.
         room && (bosh += `?room=${room.toLowerCase()}`);
-
-        // XXX By default, config.js does not add a protocol to the BOSH URL.
-        // Which trips React Native. Make sure there is a protocol in order to
-        // satisfy React Native.
-        if (bosh !== defaultOptions.bosh
-                && !parseStandardURIString(bosh).protocol) {
-            const { protocol } = parseStandardURIString(defaultOptions.bosh);
-
-            protocol && (bosh = protocol + bosh);
-        }
 
         options.bosh = bosh;
     }
@@ -234,12 +322,11 @@ function _constructOptions(state) {
  * @returns {Function}
  */
 export function disconnect() {
-    return (dispatch: Dispatch<*>, getState: Function) => {
+    return (dispatch: Dispatch<*>, getState: Function): Promise<void> => {
         const state = getState();
-        const { conference, joining } = state['features/base/conference'];
 
-        // The conference we are joining or have already joined.
-        const conference_ = conference || joining;
+        // The conference we have already joined or are joining.
+        const conference_ = getCurrentConference(state);
 
         // Promise which completes when the conference has been left and the
         // connection has been disconnected.
@@ -253,7 +340,20 @@ export function disconnect() {
             // intention to leave the conference.
             dispatch(conferenceWillLeave(conference_));
 
-            promise = conference_.leave();
+            promise
+                = conference_.leave()
+                    .catch(error => {
+                        logger.warn(
+                            'JitsiConference.leave() rejected with:',
+                            error);
+
+                        // The library lib-jitsi-meet failed to make the
+                        // JitsiConference leave. Which may be because
+                        // JitsiConference thinks it has already left.
+                        // Regardless of the failure reason, continue in
+                        // jitsi-meet as if the leave has succeeded.
+                        dispatch(conferenceLeft(conference_));
+                    });
         } else {
             promise = Promise.resolve();
         }
@@ -261,7 +361,7 @@ export function disconnect() {
         // Disconnect the connection.
         const { connecting, connection } = state['features/base/connection'];
 
-        // The connection we are connecting or have already connected.
+        // The connection we have already connected or are connecting.
         const connection_ = connection || connecting;
 
         if (connection_) {

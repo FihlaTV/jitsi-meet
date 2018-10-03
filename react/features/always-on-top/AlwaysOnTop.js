@@ -1,56 +1,24 @@
+// @flow
+
 import React, { Component } from 'react';
 
-import StatelessToolbar from '../toolbox/components/StatelessToolbar';
-import StatelessToolbarButton
-    from '../toolbox/components/StatelessToolbarButton';
+import Toolbar from './Toolbar';
 
 const { api } = window.alwaysOnTop;
 
 /**
- * The timeout in ms for hidding the toolbar.
+ * The timeout in ms for hiding the toolbar.
  */
 const TOOLBAR_TIMEOUT = 4000;
 
 /**
- * Map with toolbar button descriptors.
+ * The type of the React {@code Component} state of {@link AlwaysOnTop}.
  */
-const toolbarButtons = {
-    /**
-     * The descriptor of the camera toolbar button.
-     */
-    camera: {
-        classNames: [ 'button', 'icon-camera' ],
-        enabled: true,
-        id: 'toolbar_button_camera',
-        onClick() {
-            api.executeCommand('toggleVideo');
-        }
-    },
-
-    /**
-     * The descriptor of the toolbar button which hangs up the call/conference.
-     */
-    hangup: {
-        classNames: [ 'button', 'icon-hangup', 'button_hangup' ],
-        enabled: true,
-        id: 'toolbar_button_hangup',
-        onClick() {
-            api.executeCommand('hangup');
-            window.close();
-        }
-    },
-
-    /**
-     * The descriptor of the microphone toolbar button.
-     */
-    microphone: {
-        classNames: [ 'button', 'icon-microphone' ],
-        enabled: true,
-        id: 'toolbar_button_mute',
-        onClick() {
-            api.executeCommand('toggleAudio');
-        }
-    }
+type State = {
+    avatarURL: string,
+    displayName: string,
+    isVideoDisplayed: boolean,
+    visible: boolean
 };
 
 /**
@@ -59,55 +27,62 @@ const toolbarButtons = {
  * @class AlwaysOnTop
  * @extends Component
  */
-export default class AlwaysOnTop extends Component {
+export default class AlwaysOnTop extends Component<*, State> {
+    _hovered: boolean;
+
     /**
-     * Initializes new AlwaysOnTop instance.
+     * Initializes a new {@code AlwaysOnTop} instance.
      *
-     * @param {Object} props - The read-only properties with which the new
-     * instance is to be initialized.
+     * @param {*} props - The read-only properties with which the new instance
+     * is to be initialized.
      */
-    constructor(props) {
+    constructor(props: *) {
         super(props);
 
         this.state = {
-            visible: true,
-            audioMuted: false,
-            videoMuted: false,
-            audioAvailable: false,
-            videoAvailable: false
+            avatarURL: '',
+            displayName: '',
+            isVideoDisplayed: true,
+            visible: true
         };
 
-        this._hovered = false;
-
-        this._audioAvailabilityListener
-            = this._audioAvailabilityListener.bind(this);
-        this._audioMutedListener = this._audioMutedListener.bind(this);
+        // Bind event handlers so they are only bound once per instance.
+        this._avatarChangedListener = this._avatarChangedListener.bind(this);
+        this._displayNameChangedListener
+            = this._displayNameChangedListener.bind(this);
+        this._largeVideoChangedListener
+            = this._largeVideoChangedListener.bind(this);
         this._mouseMove = this._mouseMove.bind(this);
-        this._onMouseOver = this._onMouseOver.bind(this);
         this._onMouseOut = this._onMouseOut.bind(this);
-        this._videoAvailabilityListener
-            = this._videoAvailabilityListener.bind(this);
-        this._videoMutedListener = this._videoMutedListener.bind(this);
+        this._onMouseOver = this._onMouseOver.bind(this);
     }
 
-    /**
-     * Handles audio available api events.
-     *
-     * @param {{ available: boolean }} status - The new available status.
-     * @returns {void}
-     */
-    _audioAvailabilityListener({ available }) {
-        this.setState({ audioAvailable: available });
-    }
+    _avatarChangedListener: () => void;
 
     /**
-     * Handles audio muted api events.
+     * Handles avatar changed api events.
      *
-     * @param {{ muted: boolean }} status - The new muted status.
      * @returns {void}
      */
-    _audioMutedListener({ muted }) {
-        this.setState({ audioMuted: muted });
+    _avatarChangedListener({ avatarURL, id }) {
+        if (api._getOnStageParticipant() === id
+                && avatarURL !== this.state.avatarURL) {
+            this.setState({ avatarURL });
+        }
+    }
+
+    _displayNameChangedListener: () => void;
+
+    /**
+     * Handles display name changed api events.
+     *
+     * @returns {void}
+     */
+    _displayNameChangedListener({ formattedDisplayName, id }) {
+        if (api._getOnStageParticipant() === id
+                && formattedDisplayName !== this.state.displayName) {
+            this.setState({ displayName: formattedDisplayName });
+        }
     }
 
     /**
@@ -116,15 +91,38 @@ export default class AlwaysOnTop extends Component {
      * @returns {void}
      */
     _hideToolbarAfterTimeout() {
-        setTimeout(() => {
-            if (this._hovered) {
-                this._hideToolbarAfterTimeout();
-
-                return;
-            }
-            this.setState({ visible: false });
-        }, TOOLBAR_TIMEOUT);
+        setTimeout(
+            () => {
+                if (this._hovered) {
+                    this._hideToolbarAfterTimeout();
+                } else {
+                    this.setState({ visible: false });
+                }
+            },
+            TOOLBAR_TIMEOUT);
     }
+
+    _largeVideoChangedListener: () => void;
+
+    /**
+     * Handles large video changed api events.
+     *
+     * @returns {void}
+     */
+    _largeVideoChangedListener() {
+        const userID = api._getOnStageParticipant();
+        const avatarURL = api.getAvatarURL(userID);
+        const displayName = api._getFormattedDisplayName(userID);
+        const isVideoDisplayed = Boolean(api._getLargeVideo());
+
+        this.setState({
+            avatarURL,
+            displayName,
+            isVideoDisplayed
+        });
+    }
+
+    _mouseMove: () => void;
 
     /**
      * Handles mouse move events.
@@ -132,10 +130,21 @@ export default class AlwaysOnTop extends Component {
      * @returns {void}
      */
     _mouseMove() {
-        if (!this.state.visible) {
-            this.setState({ visible: true });
-        }
+        this.state.visible || this.setState({ visible: true });
     }
+
+    _onMouseOut: () => void;
+
+    /**
+     * Toolbar mouse out handler.
+     *
+     * @returns {void}
+     */
+    _onMouseOut() {
+        this._hovered = false;
+    }
+
+    _onMouseOver: () => void;
 
     /**
      * Toolbar mouse over handler.
@@ -147,32 +156,35 @@ export default class AlwaysOnTop extends Component {
     }
 
     /**
-     * Toolbar mouse out handler.
+     * Renders display name and avatar for the on stage participant.
      *
-     * @returns {void}
+     * @returns {ReactElement}
      */
-    _onMouseOut() {
-        this._hovered = false;
-    }
+    _renderVideoNotAvailableScreen() {
+        const { avatarURL, displayName, isVideoDisplayed } = this.state;
 
-    /**
-     * Handles audio available api events.
-     *
-     * @param {{ available: boolean }} status - The new available status.
-     * @returns {void}
-     */
-    _videoAvailabilityListener({ available }) {
-        this.setState({ videoAvailable: available });
-    }
+        if (isVideoDisplayed) {
+            return null;
+        }
 
-    /**
-     * Handles video muted api events.
-     *
-     * @param {{ muted: boolean }} status - The new muted status.
-     * @returns {void}
-     */
-    _videoMutedListener({ muted }) {
-        this.setState({ videoMuted: muted });
+        return (
+            <div id = 'videoNotAvailableScreen'>
+                {
+                    avatarURL
+                        ? <div id = 'avatarContainer'>
+                            <img
+                                id = 'avatar'
+                                src = { avatarURL } />
+                        </div>
+                        : null
+                }
+                <div
+                    className = 'displayname'
+                    id = 'displayname'>
+                    { displayName }
+                </div>
+            </div>
+        );
     }
 
     /**
@@ -182,31 +194,11 @@ export default class AlwaysOnTop extends Component {
      * @returns {void}
      */
     componentDidMount() {
-        api.on('audioMuteStatusChanged', this._audioMutedListener);
-        api.on('videoMuteStatusChanged', this._videoMutedListener);
-        api.on('audioAvailabilityChanged', this._audioAvailabilityListener);
-        api.on('videoAvailabilityChanged', this._videoAvailabilityListener);
+        api.on('avatarChanged', this._avatarChangedListener);
+        api.on('displayNameChange', this._displayNameChangedListener);
+        api.on('largeVideoChanged', this._largeVideoChangedListener);
 
-        Promise.all([
-            api.isAudioMuted(),
-            api.isVideoMuted(),
-            api.isAudioAvailable(),
-            api.isVideoAvailable()
-        ])
-        .then(([
-            audioMuted = false,
-            videoMuted = false,
-            audioAvailable = false,
-            videoAvailable = false
-        ]) =>
-            this.setState({
-                audioMuted,
-                videoMuted,
-                audioAvailable,
-                videoAvailable
-            })
-        )
-        .catch(console.error);
+        this._largeVideoChangedListener();
 
         window.addEventListener('mousemove', this._mouseMove);
 
@@ -220,14 +212,14 @@ export default class AlwaysOnTop extends Component {
      * @returns {void}
      */
     componentWillUnmount() {
-        api.removeListener('audioMuteStatusChanged',
-            this._audioMutedListener);
-        api.removeListener('videoMuteStatusChanged',
-            this._videoMutedListener);
-        api.removeListener('audioAvailabilityChanged',
-            this._audioAvailabilityListener);
-        api.removeListener('videoAvailabilityChanged',
-            this._videoAvailabilityListener);
+        api.removeListener('avatarChanged', this._avatarChangedListener);
+        api.removeListener(
+            'displayNameChange',
+            this._displayNameChangedListener);
+        api.removeListener(
+            'largeVideoChanged',
+            this._largeVideoChangedListener);
+
         window.removeEventListener('mousemove', this._mouseMove);
     }
 
@@ -237,7 +229,7 @@ export default class AlwaysOnTop extends Component {
      * @inheritdoc
      * @returns {void}
      */
-    componentWillUpdate(nextProps, nextState) {
+    componentWillUpdate(nextProps: *, nextState: State) {
         if (!this.state.visible && nextState.visible) {
             this._hideToolbarAfterTimeout();
         }
@@ -250,48 +242,14 @@ export default class AlwaysOnTop extends Component {
      * @returns {ReactElement}
      */
     render() {
-        const className
-            = `toolbar_primary ${this.state.visible ? 'fadeIn' : 'fadeOut'}`;
-
         return (
-            <StatelessToolbar
-                className = { className }
-                onMouseOut = { this._onMouseOut }
-                onMouseOver = { this._onMouseOver }>
-                {
-                    Object.entries(toolbarButtons).map(([ key, button ]) => {
-                        const { onClick } = button;
-                        let enabled = false, toggled = false;
-
-                        switch (key) {
-                        case 'microphone':
-                            enabled = this.state.audioAvailable;
-                            toggled = enabled ? this.state.audioMuted : true;
-                            break;
-                        case 'camera':
-                            enabled = this.state.videoAvailable;
-                            toggled = enabled ? this.state.videoMuted : true;
-                            break;
-                        default: // hangup button
-                            toggled = false;
-                            enabled = true;
-                        }
-
-                        const updatedButton = {
-                            ...button,
-                            enabled,
-                            toggled
-                        };
-
-                        return (
-                            <StatelessToolbarButton
-                                button = { updatedButton }
-                                key = { key }
-                                onClick = { onClick } />
-                        );
-                    })
-                }
-            </StatelessToolbar>
+            <div id = 'alwaysOnTop'>
+                <Toolbar
+                    className = { this.state.visible ? 'fadeIn' : 'fadeOut' }
+                    onMouseOut = { this._onMouseOut }
+                    onMouseOver = { this._onMouseOver } />
+                { this._renderVideoNotAvailableScreen() }
+            </div>
         );
     }
 }
