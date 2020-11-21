@@ -1,6 +1,6 @@
 /* global $, APP, config */
 
-import { toJid } from '../../../react/features/base/connection';
+import { toJid } from '../../../react/features/base/connection/functions';
 import {
     JitsiConnectionErrors
 } from '../../../react/features/base/lib-jitsi-meet';
@@ -113,7 +113,8 @@ function LoginDialog(successCallback, cancelCallback) {
         states,
         {
             closeText: '',
-            persistent: true
+            persistent: true,
+            zIndex: 1020
         },
         null
     );

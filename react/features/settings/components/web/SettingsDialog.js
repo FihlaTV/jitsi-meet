@@ -1,23 +1,23 @@
 // @flow
 
 import React, { Component } from 'react';
-import { connect } from 'react-redux';
 
 import { getAvailableDevices } from '../../../base/devices';
 import { DialogWithTabs, hideDialog } from '../../../base/dialog';
+import { connect } from '../../../base/redux';
 import { isCalendarEnabled } from '../../../calendar-sync';
 import {
     DeviceSelection,
     getDeviceSelectionDialogProps,
     submitDeviceSelectionTab
 } from '../../../device-selection';
+import { submitMoreTab, submitProfileTab } from '../../actions';
+import { SETTINGS_TABS } from '../../constants';
+import { getMoreTabProps, getProfileTabProps } from '../../functions';
 
 import CalendarTab from './CalendarTab';
 import MoreTab from './MoreTab';
 import ProfileTab from './ProfileTab';
-import { getMoreTabProps, getProfileTabProps } from '../../functions';
-import { submitMoreTab, submitProfileTab } from '../../actions';
-import { SETTINGS_TABS } from '../../constants';
 
 declare var APP: Object;
 declare var interfaceConfig: Object;
@@ -91,11 +91,13 @@ class SettingsDialog extends Component<Props> {
         return (
             <DialogWithTabs
                 closeDialog = { this._closeDialog }
+                cssClassName = 'settings-dialog'
                 defaultTab = {
                     defaultTabIdx === -1 ? undefined : defaultTabIdx
                 }
                 onSubmit = { onSubmit }
-                tabs = { tabs } />
+                tabs = { tabs }
+                titleKey = 'settings.title' />
         );
     }
 
@@ -124,16 +126,15 @@ class SettingsDialog extends Component<Props> {
  */
 function _mapStateToProps(state) {
     const configuredTabs = interfaceConfig.SETTINGS_SECTIONS || [];
-    const jwt = state['features/base/jwt'];
 
     // The settings sections to display.
     const showDeviceSettings = configuredTabs.includes('devices');
     const moreTabProps = getMoreTabProps(state);
-    const { showModeratorSettings, showLanguageSettings } = moreTabProps;
+    const { showModeratorSettings, showLanguageSettings, showPrejoinSettings } = moreTabProps;
     const showProfileSettings
-        = configuredTabs.includes('profile') && jwt.isGuest;
+        = configuredTabs.includes('profile') && !state['features/base/config'].disableProfile;
     const showCalendarSettings
-        = configuredTabs.includes('calendar') && isCalendarEnabled();
+        = configuredTabs.includes('calendar') && isCalendarEnabled(state);
     const tabs = [];
 
     if (showDeviceSettings) {
@@ -182,12 +183,24 @@ function _mapStateToProps(state) {
         });
     }
 
-    if (showModeratorSettings || showLanguageSettings) {
+    if (showModeratorSettings || showLanguageSettings || showPrejoinSettings) {
         tabs.push({
             name: SETTINGS_TABS.MORE,
             component: MoreTab,
             label: 'settings.more',
             props: moreTabProps,
+            propsUpdateFunction: (tabState, newProps) => {
+                // Updates tab props, keeping users selection
+
+                return {
+                    ...newProps,
+                    currentLanguage: tabState.currentLanguage,
+                    followMeEnabled: tabState.followMeEnabled,
+                    showPrejoinPage: tabState.showPrejoinPage,
+                    startAudioMuted: tabState.startAudioMuted,
+                    startVideoMuted: tabState.startVideoMuted
+                };
+            },
             styles: 'settings-pane more-pane',
             submit: submitMoreTab
         });

@@ -1,7 +1,6 @@
 // @flow
 
 import { ReducerRegistry, set } from '../redux';
-import { randomHexString } from '../util';
 
 import {
     DOMINANT_SPEAKER_CHANGED,
@@ -9,7 +8,8 @@ import {
     PARTICIPANT_JOINED,
     PARTICIPANT_LEFT,
     PARTICIPANT_UPDATED,
-    PIN_PARTICIPANT
+    PIN_PARTICIPANT,
+    SET_LOADABLE_AVATAR_URL
 } from './actionTypes';
 import { LOCAL_PARTICIPANT_DEFAULT_ID, PARTICIPANT_ROLE } from './constants';
 
@@ -64,6 +64,7 @@ const PARTICIPANT_PROPS_TO_OMIT_WHEN_UPDATE = [
  */
 ReducerRegistry.register('features/base/participants', (state = [], action) => {
     switch (action.type) {
+    case SET_LOADABLE_AVATAR_URL:
     case DOMINANT_SPEAKER_CHANGED:
     case PARTICIPANT_ID_CHANGED:
     case PARTICIPANT_UPDATED:
@@ -132,6 +133,7 @@ function _participant(state: Object = {}, action) {
         break;
     }
 
+    case SET_LOADABLE_AVATAR_URL:
     case PARTICIPANT_UPDATED: {
         const { participant } = action; // eslint-disable-line no-shadow
         let { id } = participant;
@@ -185,20 +187,17 @@ function _participantJoined({ participant }) {
         dominantSpeaker,
         email,
         isFakeParticipant,
+        isJigasi,
+        loadableAvatarUrl,
         local,
         name,
         pinned,
         presence,
         role
     } = participant;
-    let { avatarID, conference, id } = participant;
+    let { conference, id } = participant;
 
     if (local) {
-        // avatarID
-        //
-        // TODO Get the avatarID of the local participant from localStorage.
-        avatarID || (avatarID = randomHexString(32));
-
         // conference
         //
         // XXX The local participant is not identified in association with a
@@ -211,7 +210,6 @@ function _participantJoined({ participant }) {
     }
 
     return {
-        avatarID,
         avatarURL,
         botType,
         conference,
@@ -220,7 +218,10 @@ function _participantJoined({ participant }) {
         email,
         id,
         isFakeParticipant,
+        isJigasi,
+        loadableAvatarUrl,
         local: local || false,
+        mutedWhileDisconnected: local ? undefined : false,
         name,
         pinned: pinned || false,
         presence,

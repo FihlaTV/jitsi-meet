@@ -1,25 +1,22 @@
 // @flow
 
+import UIEvents from '../../../../service/UI/UIEvents';
+import { NOTIFICATION_TIMEOUT, showNotification } from '../../notifications';
+import { CALLING, INVITED } from '../../presence-status';
 import { APP_WILL_MOUNT, APP_WILL_UNMOUNT } from '../app';
 import {
     CONFERENCE_WILL_JOIN,
     forEachConference,
     getCurrentConference
 } from '../conference';
-import { CALLING, INVITED } from '../../presence-status';
+import { JitsiConferenceEvents } from '../lib-jitsi-meet';
 import { MiddlewareRegistry, StateListenerRegistry } from '../redux';
-import UIEvents from '../../../../service/UI/UIEvents';
 import { playSound, registerSound, unregisterSound } from '../sounds';
+import { getTrackByJitsiTrack, TRACK_ADDED, TRACK_REMOVED, TRACK_UPDATED } from '../tracks';
 
 import {
-    localParticipantIdChanged,
-    localParticipantJoined,
-    localParticipantLeft,
-    participantLeft,
-    participantUpdated
-} from './actions';
-import {
     DOMINANT_SPEAKER_CHANGED,
+    GRANT_MODERATOR,
     KICK_PARTICIPANT,
     MUTE_REMOTE_PARTICIPANT,
     PARTICIPANT_DISPLAY_NAME_CHANGED,
@@ -28,15 +25,25 @@ import {
     PARTICIPANT_UPDATED
 } from './actionTypes';
 import {
+    localParticipantIdChanged,
+    localParticipantJoined,
+    localParticipantLeft,
+    participantLeft,
+    participantUpdated,
+    setLoadableAvatarUrl
+} from './actions';
+import {
     LOCAL_PARTICIPANT_DEFAULT_ID,
     PARTICIPANT_JOINED_SOUND_ID,
     PARTICIPANT_LEFT_SOUND_ID
 } from './constants';
 import {
-    getAvatarURLByParticipantId,
+    getFirstLoadableAvatarUrl,
     getLocalParticipant,
     getParticipantById,
-    getParticipantCount
+    getParticipantCount,
+    getParticipantDisplayName,
+    figureOutMutedWhileDisconnectedStatus
 } from './functions';
 import { PARTICIPANT_JOINED_FILE, PARTICIPANT_LEFT_FILE } from './sounds';
 
@@ -82,6 +89,13 @@ MiddlewareRegistry.register(store => next => action => {
         break;
     }
 
+    case GRANT_MODERATOR: {
+        const { conference } = store.getState()['features/base/conference'];
+
+        conference.grantOwner(action.id);
+        break;
+    }
+
     case KICK_PARTICIPANT: {
         const { conference } = store.getState()['features/base/conference'];
 
@@ -110,10 +124,11 @@ MiddlewareRegistry.register(store => next => action => {
         break;
     }
 
-    case PARTICIPANT_JOINED:
+    case PARTICIPANT_JOINED: {
         _maybePlaySounds(store, action);
 
         return _participantJoinedOrUpdated(store, next, action);
+    }
 
     case PARTICIPANT_LEFT:
         _maybePlaySounds(store, action);
@@ -121,6 +136,11 @@ MiddlewareRegistry.register(store => next => action => {
 
     case PARTICIPANT_UPDATED:
         return _participantJoinedOrUpdated(store, next, action);
+
+    case TRACK_ADDED:
+    case TRACK_REMOVED:
+    case TRACK_UPDATED:
+        return _trackChanged(store, next, action);
     }
 
     return next(action);
@@ -178,6 +198,81 @@ StateListenerRegistry.register(
     });
 
 /**
+ * Registers listeners for participant change events.
+ */
+StateListenerRegistry.register(
+    state => state['features/base/conference'].conference,
+    (conference, store) => {
+        if (conference) {
+            // We joined a conference
+            conference.on(
+                JitsiConferenceEvents.PARTICIPANT_PROPERTY_CHANGED,
+                (participant, propertyName, oldValue, newValue) => {
+                    switch (propertyName) {
+                    case 'e2eeEnabled':
+                        _e2eeUpdated(store, conference, participant.getId(), newValue);
+                        break;
+                    case 'features_e2ee':
+                        store.dispatch(participantUpdated({
+                            conference,
+                            id: participant.getId(),
+                            e2eeSupported: newValue
+                        }));
+                        break;
+                    case 'features_jigasi':
+                        store.dispatch(participantUpdated({
+                            conference,
+                            id: participant.getId(),
+                            isJigasi: newValue
+                        }));
+                        break;
+                    case 'features_screen-sharing':
+                        store.dispatch(participantUpdated({
+                            conference,
+                            id: participant.getId(),
+                            features: { 'screen-sharing': true }
+                        }));
+                        break;
+                    case 'raisedHand': {
+                        _raiseHandUpdated(store, conference, participant.getId(), newValue);
+                        break;
+                    }
+                    default:
+
+                        // Ignore for now.
+                    }
+
+                });
+        } else {
+            const localParticipantId = getLocalParticipant(store.getState).id;
+
+            // We left the conference, the local participant must be updated.
+            _e2eeUpdated(store, conference, localParticipantId, false);
+            _raiseHandUpdated(store, conference, localParticipantId, false);
+        }
+    }
+);
+
+/**
+ * Handles a E2EE enabled status update.
+ *
+ * @param {Function} dispatch - The Redux dispatch function.
+ * @param {Object} conference - The conference for which we got an update.
+ * @param {string} participantId - The ID of the participant from which we got an update.
+ * @param {boolean} newValue - The new value of the E2EE enabled     status.
+ * @returns {void}
+ */
+function _e2eeUpdated({ dispatch }, conference, participantId, newValue) {
+    const e2eeEnabled = newValue === 'true';
+
+    dispatch(participantUpdated({
+        conference,
+        id: participantId,
+        e2eeEnabled
+    }));
+}
+
+/**
  * Initializes the local participant and signals that it joined.
  *
  * @private
@@ -195,7 +290,6 @@ function _localParticipantJoined({ getState, dispatch }, next, action) {
     const settings = getState()['features/base/settings'];
 
     dispatch(localParticipantJoined({
-        avatarID: settings.avatarID,
         avatarURL: settings.avatarURL,
         email: settings.email,
         name: settings.displayName
@@ -271,8 +365,9 @@ function _maybePlaySounds({ getState, dispatch }, action) {
  * @private
  * @returns {Object} The value returned by {@code next(action)}.
  */
-function _participantJoinedOrUpdated({ getState }, next, action) {
-    const { participant: { id, local, raisedHand } } = action;
+function _participantJoinedOrUpdated(store, next, action) {
+    const { dispatch, getState } = store;
+    const { participant: { avatarURL, e2eeEnabled, email, id, local, name, raisedHand } } = action;
 
     // Send an external update of the local participant's raised hand state
     // if a new raised hand state is defined in the action.
@@ -285,43 +380,71 @@ function _participantJoinedOrUpdated({ getState }, next, action) {
                     'raisedHand',
                     raisedHand);
         }
+    }
 
-        if (typeof APP === 'object') {
-            if (local) {
-                APP.UI.onLocalRaiseHandChanged(raisedHand);
-                APP.UI.setLocalRaisedHandStatus(raisedHand);
-            } else {
-                const remoteParticipant = getParticipantById(getState(), id);
+    // Send an external update of the local participant's E2EE enabled state
+    // if a new state is defined in the action.
+    if (typeof e2eeEnabled !== 'undefined') {
+        if (local) {
+            const { conference } = getState()['features/base/conference'];
 
-                remoteParticipant
-                    && APP.UI.setRaisedHandStatus(
-                        remoteParticipant.id,
-                        remoteParticipant.name,
-                        raisedHand);
-            }
+            conference && conference.setLocalParticipantProperty('e2eeEnabled', e2eeEnabled);
         }
+    }
+
+    // Allow the redux update to go through and compare the old avatar
+    // to the new avatar and emit out change events if necessary.
+    const result = next(action);
+
+    const { disableThirdPartyRequests } = getState()['features/base/config'];
+
+    if (!disableThirdPartyRequests && (avatarURL || email || id || name)) {
+        const participantId = !id && local ? getLocalParticipant(getState()).id : id;
+        const updatedParticipant = getParticipantById(getState(), participantId);
+
+        getFirstLoadableAvatarUrl(updatedParticipant, store)
+            .then(url => {
+                dispatch(setLoadableAvatarUrl(participantId, url));
+            });
     }
 
     // Notify external listeners of potential avatarURL changes.
     if (typeof APP === 'object') {
-        const oldAvatarURL = getAvatarURLByParticipantId(getState(), id);
+        const currentKnownId = local ? APP.conference.getMyUserId() : id;
 
-        // Allow the redux update to go through and compare the old avatar
-        // to the new avatar and emit out change events if necessary.
-        const result = next(action);
-        const newAvatarURL = getAvatarURLByParticipantId(getState(), id);
-
-        if (oldAvatarURL !== newAvatarURL) {
-            const currentKnownId = local ? APP.conference.getMyUserId() : id;
-
-            APP.UI.refreshAvatarDisplay(currentKnownId, newAvatarURL);
-            APP.API.notifyAvatarChanged(currentKnownId, newAvatarURL);
-        }
-
-        return result;
+        // Force update of local video getting a new id.
+        APP.UI.refreshAvatarDisplay(currentKnownId);
     }
 
-    return next(action);
+    return result;
+}
+
+/**
+ * Handles a raise hand status update.
+ *
+ * @param {Function} dispatch - The Redux dispatch function.
+ * @param {Object} conference - The conference for which we got an update.
+ * @param {string} participantId - The ID of the participant from which we got an update.
+ * @param {boolean} newValue - The new value of the raise hand status.
+ * @returns {void}
+ */
+function _raiseHandUpdated({ dispatch, getState }, conference, participantId, newValue) {
+    const raisedHand = newValue === 'true';
+
+    dispatch(participantUpdated({
+        conference,
+        id: participantId,
+        raisedHand
+    }));
+
+    if (raisedHand) {
+        dispatch(showNotification({
+            titleArguments: {
+                name: getParticipantDisplayName(getState, participantId)
+            },
+            titleKey: 'notify.raisedHand'
+        }, NOTIFICATION_TIMEOUT));
+    }
 }
 
 /**
@@ -335,6 +458,55 @@ function _registerSounds({ dispatch }) {
     dispatch(
         registerSound(PARTICIPANT_JOINED_SOUND_ID, PARTICIPANT_JOINED_FILE));
     dispatch(registerSound(PARTICIPANT_LEFT_SOUND_ID, PARTICIPANT_LEFT_FILE));
+}
+
+/**
+ * Notifies the feature base/participants that the action there has been a change in the tracks of the participants.
+ *
+ * @param {Store} store - The redux store in which the specified {@code action} is being dispatched.
+ * @param {Dispatch} next - The redux {@code dispatch} function to dispatch the specified {@code action} in the
+ * specified {@code store}.
+ * @param {Action} action - The redux action {@code PARTICIPANT_JOINED} or {@code PARTICIPANT_UPDATED} which is being
+ * dispatched in the specified {@code store}.
+ * @private
+ * @returns {Object} The value returned by {@code next(action)}.
+ */
+function _trackChanged({ dispatch, getState }, next, action) {
+    const { jitsiTrack } = action.track;
+    let track;
+
+    if (action.type === TRACK_REMOVED) {
+        track = getTrackByJitsiTrack(getState()['features/base/tracks'], jitsiTrack);
+    }
+
+    const result = next(action);
+
+    if (action.type !== TRACK_REMOVED) {
+        track = getTrackByJitsiTrack(getState()['features/base/tracks'], jitsiTrack);
+    }
+
+    if (typeof track === 'undefined' || track.local) {
+        return result;
+    }
+
+    const { participantId } = track;
+    const state = getState();
+    const participant = getParticipantById(state, participantId);
+
+    if (!participant) {
+        return result;
+    }
+
+    const mutedWhileDisconnected = figureOutMutedWhileDisconnectedStatus(state, participantId);
+
+    if (participant.mutedWhileDisconnected !== mutedWhileDisconnected) {
+        dispatch(participantUpdated({
+            id: participantId,
+            mutedWhileDisconnected
+        }));
+    }
+
+    return result;
 }
 
 /**

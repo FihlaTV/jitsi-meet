@@ -1,11 +1,9 @@
 // @flow
 
-import { connect } from 'react-redux';
-
 import { translate } from '../../../base/i18n';
-import { AbstractButton } from '../../../base/toolbox';
-import type { AbstractButtonProps } from '../../../base/toolbox';
-
+import { IconHangup } from '../../../base/icons';
+import { connect } from '../../../base/redux';
+import { AbstractButton, type AbstractButtonProps } from '../../../base/toolbox/components';
 import { incomingCallDeclined } from '../actions';
 
 /**
@@ -24,7 +22,7 @@ type Props = AbstractButtonProps & {
  */
 class DeclineButton extends AbstractButton<Props, *> {
     accessibilityLabel = 'incomingCall.decline';
-    iconName = 'hangup';
+    icon = IconHangup;
     label = 'incomingCall.decline';
 
     /**

@@ -1,22 +1,32 @@
 /* application specific logic */
 
-// FIXME: remove once atlaskit work with React 16
-// It seems that @atlaskit/icon is importing PropTypes from React, but it
-// happens through some glyph coffee script template. It could be that more
-// things are broken there (not only the icon).
-import './react/features/base/react/prop-types-polyfill.js';
-
 import 'jquery';
 import 'jquery-contextmenu';
 import 'jQuery-Impromptu';
-import 'autosize';
 
+import 'olm';
+
+import 'focus-visible';
+
+// We need to setup the jitsi-local-storage as early as possible so that we can start using it.
+// NOTE: If jitsi-local-storage is used before the initial setup is performed this will break the use case when we use
+// the  local storage from the parent page when the localStorage is disabled. Also the setup is relying that
+// window.location is not changed and still has all URL parameters.
+import './react/features/base/jitsi-local-storage/setup';
 import conference from './conference';
 import API from './modules/API';
+import UI from './modules/UI/UI';
 import keyboardshortcut from './modules/keyboardshortcut/keyboardshortcut';
 import remoteControl from './modules/remotecontrol/RemoteControl';
 import translation from './modules/translation/translation';
-import UI from './modules/UI/UI';
+
+// Initialize Olm as early as possible.
+if (window.Olm) {
+    window.Olm.init().catch(e => {
+        console.error('Failed to initialize Olm, E2EE will be disabled', e);
+        delete window.Olm;
+    });
+}
 
 window.APP = {
     API,

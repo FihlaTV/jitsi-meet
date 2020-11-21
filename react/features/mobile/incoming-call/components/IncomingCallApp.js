@@ -1,8 +1,8 @@
 // @flow
 
 import { BaseApp } from '../../../base/app';
-
 import { incomingCallReceived } from '../actions';
+
 import IncomingCallPage from './IncomingCallPage';
 
 /**
@@ -43,8 +43,8 @@ export default class IncomingCallApp extends BaseApp<Props> {
      *
      * @returns {void}
      */
-    componentWillMount() {
-        super.componentWillMount();
+    componentDidMount() {
+        super.componentDidMount();
 
         this._init.then(() => {
             const { dispatch } = this.state.store;

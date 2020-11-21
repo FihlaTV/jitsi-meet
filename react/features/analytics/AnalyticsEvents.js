@@ -185,6 +185,23 @@ export function createRecentClickedEvent(eventName, attributes = {}) {
 }
 
 /**
+ * Creates an event which indicate an action occured in the chrome extension banner.
+ *
+ * @param {boolean} installPressed - Whether the user pressed install or `x` - cancel.
+ * @param {Object} attributes - Attributes to attach to the event.
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createChromeExtensionBannerEvent(installPressed, attributes = {}) {
+    return {
+        action: installPressed ? 'install' : 'cancel',
+        attributes,
+        source: 'chrome.extension.banner',
+        type: TYPE_UI
+    };
+}
+
+/**
  * Creates an event which indicates that the recent list container is shown and
  * selected.
  *
@@ -241,6 +258,20 @@ export function createDeviceChangedEvent(mediaType, deviceType) {
 }
 
 /**
+ * Creates an event indicating that an action related to E2EE occurred.
+ *
+ * @param {string} action - The action which occurred.
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createE2EEEvent(action) {
+    return {
+        action,
+        actionSubject: 'e2ee'
+    };
+}
+
+/**
  * Creates an event which specifies that the feedback dialog has been opened.
  *
  * @returns {Object} The event in a format suitable for sending via
@@ -268,6 +299,39 @@ export function createInviteDialogEvent(
         actionSubject,
         attributes,
         source: 'inviteDialog'
+    };
+}
+
+/**
+ * Creates an event which reports about the current network information reported by the operating system.
+ *
+ * @param {boolean} isOnline - Tells whether or not the internet is reachable.
+ * @param {string} [networkType] - Network type, see {@code NetworkInfo} type defined by the 'base/net-info' feature.
+ * @param {Object} [details] - Extra info, see {@code NetworkInfo} type defined by the 'base/net-info' feature.
+ * @returns {Object}
+ */
+export function createNetworkInfoEvent({ isOnline, networkType, details }) {
+    const attributes = { isOnline };
+
+    // Do no include optional stuff or Amplitude handler will log warnings.
+    networkType && (attributes.networkType = networkType);
+    details && (attributes.details = details);
+
+    return {
+        action: 'network.info',
+        attributes
+    };
+}
+
+/**
+ * Creates an "offer/answer failure" event.
+ *
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createOfferAnswerFailedEvent() {
+    return {
+        action: 'offer.answer.failure'
     };
 }
 
@@ -338,15 +402,59 @@ export function createProfilePanelButtonEvent(buttonName, attributes = {}) {
  * @param {string} dialogName - The name of the dialog (e.g. 'start' or 'stop').
  * @param {string} buttonName - The name of the button (e.g. 'confirm' or
  * 'cancel').
+ * @param {Object} attributes - Attributes to attach to the event.
  * @returns {Object} The event in a format suitable for sending via
  * sendAnalytics.
  */
-export function createRecordingDialogEvent(dialogName, buttonName) {
+export function createRecordingDialogEvent(
+        dialogName, buttonName, attributes = {}) {
     return {
         action: 'clicked',
         actionSubject: buttonName,
+        attributes,
         source: `${dialogName}.recording.dialog`,
         type: TYPE_UI
+    };
+}
+
+/**
+ * Creates an event which indicates that a specific button on one of the
+ * liveStreaming-related dialogs was clicked.
+ *
+ * @param {string} dialogName - The name of the dialog (e.g. 'start' or 'stop').
+ * @param {string} buttonName - The name of the button (e.g. 'confirm' or
+ * 'cancel').
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createLiveStreamingDialogEvent(dialogName, buttonName) {
+    return {
+        action: 'clicked',
+        actionSubject: buttonName,
+        source: `${dialogName}.liveStreaming.dialog`,
+        type: TYPE_UI
+    };
+}
+
+/**
+ * Creates an event with the local tracks duration.
+ *
+ * @param {Object} duration - The object with the duration of the local tracks.
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createLocalTracksDurationEvent(duration) {
+    const { audio, video, conference } = duration;
+    const { camera, desktop } = video;
+
+    return {
+        action: 'local.tracks.durations',
+        attributes: {
+            audio: audio.value,
+            camera: camera.value,
+            conference: conference.value,
+            desktop: desktop.value
+        }
     };
 }
 
@@ -367,6 +475,25 @@ export function createRecordingEvent(action, type, value) {
         actionSubject: `recording.${type}`,
         attributes: {
             value
+        }
+    };
+}
+
+/**
+ * Creates an event which indicates that the same conference has been rejoined.
+ *
+ * @param {string} url - The full conference URL.
+ * @param {number} lastConferenceDuration - How many seconds user stayed in the previous conference.
+ * @param {number} timeSinceLeft - How many seconds since the last conference was left.
+ * @returns {Object} The event in a format suitable for sending via sendAnalytics.
+ */
+export function createRejoinedEvent({ url, lastConferenceDuration, timeSinceLeft }) {
+    return {
+        action: 'rejoined',
+        attributes: {
+            lastConferenceDuration,
+            timeSinceLeft,
+            url
         }
     };
 }
@@ -412,8 +539,43 @@ export function createRemoteVideoMenuButtonEvent(buttonName, attributes) {
 }
 
 /**
+ * The rtcstats websocket onclose event. We send this to amplitude in order
+ * to detect trace ws prematurely closing.
+ *
+ * @param {Object} closeEvent - The event with which the websocket closed.
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createRTCStatsTraceCloseEvent(closeEvent) {
+    const event = {
+        action: 'trace.onclose',
+        source: 'rtcstats'
+    };
+
+    event.code = closeEvent.code;
+    event.reason = closeEvent.reason;
+
+    return event;
+}
+
+/**
+ * Creates an event indicating that an action related to video blur
+ * occurred (e.g. It was started or stopped).
+ *
+ * @param {string} action - The action which occurred.
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createVideoBlurEvent(action) {
+    return {
+        action,
+        actionSubject: 'video.blur'
+    };
+}
+
+/**
  * Creates an event indicating that an action related to screen sharing
- * occurred (e.g. it was started or stopped).
+ * occurred (e.g. It was started or stopped).
  *
  * @param {string} action - The action which occurred.
  * @returns {Object} The event in a format suitable for sending via
@@ -466,7 +628,7 @@ export function createSharedVideoEvent(action, attributes = {}) {
  * Creates an event associated with a shortcut being pressed, released or
  * triggered. By convention, where appropriate an attribute named 'enable'
  * should be used to indicate the action which resulted by the shortcut being
- * pressed (e.g. whether screen sharing was enabled or disabled).
+ * pressed (e.g. Whether screen sharing was enabled or disabled).
  *
  * @param {string} shortcut - The identifier of the shortcut which produced
  * an action.
@@ -508,11 +670,23 @@ export function createStartAudioOnlyEvent(audioOnly) {
 }
 
 /**
+ * Creates an event which indicates the "start silent" configuration.
+ *
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createStartSilentEvent() {
+    return {
+        action: 'start.silent'
+    };
+}
+
+/**
  * Creates an event which indicates the "start muted" configuration.
  *
  * @param {string} source - The source of the configuration, 'local' or
  * 'remote' depending on whether it comes from the static configuration (i.e.
- * config.js) or comes dynamically from Jicofo.
+ * {@code config.js}) or comes dynamically from Jicofo.
  * @param {boolean} audioMute - Whether the configuration requests that audio
  * is muted.
  * @param {boolean} videoMute - Whether the configuration requests that video
@@ -531,21 +705,6 @@ export function createStartMutedConfigurationEvent(
             'audio_mute': audioMute,
             'video_mute': videoMute
         }
-    };
-}
-
-/**
- * Creates an event which indicates the delay for switching between simulcast
- * streams.
- *
- * @param {Object} attributes - Attributes to attach to the event.
- * @returns {Object} The event in a format suitable for sending via
- * sendAnalytics.
- */
-export function createStreamSwitchDelayEvent(attributes) {
-    return {
-        action: 'stream.switch.delay',
-        attributes
     };
 }
 
@@ -573,7 +732,7 @@ export function createSyncTrackStateEvent(mediaType, muted) {
  * Creates an event associated with a toolbar button being clicked/pressed. By
  * convention, where appropriate an attribute named 'enable' should be used to
  * indicate the action which resulted by the shortcut being pressed (e.g.
- * whether screen sharing was enabled or disabled).
+ * Whether screen sharing was enabled or disabled).
  *
  * @param {string} buttonName - The identifier of the toolbar button which was
  * clicked/pressed.
@@ -595,9 +754,9 @@ export function createToolbarEvent(buttonName, attributes = {}) {
  * Creates an event which indicates that a local track was muted.
  *
  * @param {string} mediaType - The track's media type ('audio' or 'video').
- * @param {string} reason - The reason the track was muted (e.g. it was
+ * @param {string} reason - The reason the track was muted (e.g. It was
  * triggered by the "initial mute" option, or a previously muted track was
- * replaced (e.g. when a new device was used)).
+ * replaced (e.g. When a new device was used)).
  * @param {boolean} muted - Whether the track was muted or unmuted.
  * @returns {Object} The event in a format suitable for sending via
  * sendAnalytics.
@@ -609,6 +768,22 @@ export function createTrackMutedEvent(mediaType, reason, muted = true) {
             'media_type': mediaType,
             muted,
             reason
+        }
+    };
+}
+
+/**
+ * Creates an event for joining a vpaas conference.
+ *
+ * @param {string} tenant - The conference tenant.
+ * @returns {Object} The event in a format suitable for sending via
+ * sendAnalytics.
+ */
+export function createVpaasConferenceJoinedEvent(tenant) {
+    return {
+        action: 'vpaas.conference.joined',
+        attributes: {
+            tenant
         }
     };
 }

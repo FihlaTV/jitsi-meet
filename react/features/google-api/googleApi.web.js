@@ -61,11 +61,17 @@ const googleApi = {
      * making Google API requests.
      *
      * @param {string} clientId - The client ID to be used with the API library.
+     * @param {boolean} enableYoutube - Whether youtube scope is enabled.
+     * @param {boolean} enableCalendar - Whether calendar scope is enabled.
      * @returns {Promise}
      */
-    initializeClient(clientId) {
+    initializeClient(clientId, enableYoutube, enableCalendar) {
         return this.get()
             .then(api => new Promise((resolve, reject) => {
+                const scope
+                    = `${enableYoutube ? GOOGLE_SCOPE_YOUTUBE : ''} ${enableCalendar ? GOOGLE_SCOPE_CALENDAR : ''}`
+                        .trim();
+
                 // setTimeout is used as a workaround for api.client.init not
                 // resolving consistently when the Google API Client Library is
                 // loaded asynchronously. See:
@@ -74,10 +80,7 @@ const googleApi = {
                     api.client.init({
                         clientId,
                         discoveryDocs: DISCOVERY_DOCS,
-                        scope: [
-                            GOOGLE_SCOPE_CALENDAR,
-                            GOOGLE_SCOPE_YOUTUBE
-                        ].join(' ')
+                        scope
                     })
                     .then(resolve)
                     .catch(reject);
@@ -227,8 +230,33 @@ const googleApi = {
             id: entry.id,
             location: entry.location,
             startDate: entry.start.dateTime,
-            title: entry.summary
+            title: entry.summary,
+            url: this._getConferenceDataVideoUri(entry.conferenceData)
         };
+    },
+
+    /**
+     * Checks conference data for jitsi conference solution and returns
+     * its video url.
+     *
+     * @param {Object} conferenceData - The conference data of the event.
+     * @returns {string|undefined} Returns the found video uri or undefined.
+     */
+    _getConferenceDataVideoUri(conferenceData = {}) {
+        try {
+            // check conference data coming from calendar addons
+            if (conferenceData.parameters.addOnParameters.parameters
+                    .conferenceSolutionType === 'jitsi') {
+                const videoEntry = conferenceData.entryPoints.find(
+                    e => e.entryPointType === 'video');
+
+                if (videoEntry) {
+                    return videoEntry.uri;
+                }
+            }
+        } catch (error) {
+            // we don't care about undefined fields
+        }
     },
 
     /**

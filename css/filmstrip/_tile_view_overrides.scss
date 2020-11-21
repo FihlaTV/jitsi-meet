@@ -6,7 +6,7 @@
     /**
      * Let the avatar grow with the tile.
      */
-    .userAvatar {
+    .avatar-container {
         max-height: initial;
         max-width: initial;
     }
@@ -22,7 +22,6 @@
         display: none;
     }
 
-    #localConnectionMessage,
     #remoteConnectionMessage,
     .watermark {
         z-index: $filmstripVideosZ + 1;
@@ -41,7 +40,15 @@
     #remotePresenceMessage {
         display: none !important;
     }
-    #largeVideoContainer {
-        background-color: $defaultBackground !important;
+
+    /**
+     * Thumbnail popover menus can overlap other thumbnails. Setting an auto
+     * z-index will allow AtlasKit InlineDialog's large z-index to be
+     * respected and thereby display over elements in other thumbnails,
+     * specifically the various status icons.
+     */
+    .remotevideomenu,
+    .videocontainer__toptoolbar {
+        z-index: auto;
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright @ 2017-present Atlassian Pty Ltd
+ * Copyright @ 2017-present 8x8, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,215 +16,225 @@
 
 package org.jitsi.meet;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.RestrictionEntry;
+import android.content.RestrictionsManager;
+import android.net.Uri;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
+import android.view.KeyEvent;
 
+import androidx.annotation.Nullable;
+
+import org.jitsi.meet.sdk.JitsiMeet;
 import org.jitsi.meet.sdk.JitsiMeetActivity;
-import org.jitsi.meet.sdk.JitsiMeetView;
-import org.jitsi.meet.sdk.JitsiMeetViewListener;
-import org.jitsi.meet.sdk.invite.AddPeopleController;
-import org.jitsi.meet.sdk.invite.AddPeopleControllerListener;
-import org.jitsi.meet.sdk.invite.InviteController;
-import org.jitsi.meet.sdk.invite.InviteControllerListener;
+import org.jitsi.meet.sdk.JitsiMeetConferenceOptions;
 
-import com.facebook.react.bridge.UiThreadUtil;
-
-import java.util.ArrayList;
-import java.util.List;
+import java.lang.reflect.Method;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.Collection;
 import java.util.Map;
 
 /**
- * The one and only {@link Activity} that the Jitsi Meet app needs. The
+ * The one and only Activity that the Jitsi Meet app needs. The
  * {@code Activity} is launched in {@code singleTask} mode, so it will be
  * created upon application initialization and there will be a single instance
  * of it. Further attempts at launching the application once it was already
- * launched will result in {@link Activity#onNewIntent(Intent)} being called.
- *
- * This {@code Activity} extends {@link JitsiMeetActivity} to keep the React
- * Native CLI working, since the latter always tries to launch an
- * {@code Activity} named {@code MainActivity} when doing
- * {@code react-native run-android}.
+ * launched will result in {@link MainActivity#onNewIntent(Intent)} being called.
  */
 public class MainActivity extends JitsiMeetActivity {
     /**
-     * The query to perform through {@link AddPeopleController} when the
-     * {@code InviteButton} is tapped in order to exercise the public API of the
-     * feature invite. If {@code null}, the {@code InviteButton} will not be
-     * rendered.
+     * The request code identifying requests for the permission to draw on top
+     * of other apps. The value must be 16-bit and is arbitrarily chosen here.
      */
-    private static final String ADD_PEOPLE_CONTROLLER_QUERY = null;
+    private static final int OVERLAY_PERMISSION_REQUEST_CODE
+        = (int) (Math.random() * Short.MAX_VALUE);
 
-    @Override
-    protected JitsiMeetView initializeView() {
-        JitsiMeetView view = super.initializeView();
+    /**
+     * ServerURL configuration key for restriction configuration using {@link android.content.RestrictionsManager}
+     */
+    public static final String RESTRICTION_SERVER_URL = "SERVER_URL";
 
-        // XXX In order to increase (1) awareness of API breakages and (2) API
-        // coverage, utilize JitsiMeetViewListener in the Debug configuration of
-        // the app.
-        if (BuildConfig.DEBUG && view != null) {
-            view.setListener(new JitsiMeetViewListener() {
-                private void on(String name, Map<String, Object> data) {
-                    UiThreadUtil.assertOnUiThread();
+    /**
+     * Broadcast receiver for restrictions handling
+     */
+    private BroadcastReceiver broadcastReceiver;
 
-                    // Log with the tag "ReactNative" in order to have the log
-                    // visible in react-native log-android as well.
-                    Log.d(
-                        "ReactNative",
-                        JitsiMeetViewListener.class.getSimpleName() + " "
-                            + name + " "
-                            + data);
-                }
+    /**
+     * Flag if configuration is provided by RestrictionManager
+     */
+    private boolean configurationByRestrictions = false;
 
-                @Override
-                public void onConferenceFailed(Map<String, Object> data) {
-                    on("CONFERENCE_FAILED", data);
-                }
+    /**
+     * Default URL as could be obtained from RestrictionManager
+     */
+    private String defaultURL;
 
-                @Override
-                public void onConferenceJoined(Map<String, Object> data) {
-                    on("CONFERENCE_JOINED", data);
-                }
 
-                @Override
-                public void onConferenceLeft(Map<String, Object> data) {
-                    on("CONFERENCE_LEFT", data);
-                }
-
-                @Override
-                public void onConferenceWillJoin(Map<String, Object> data) {
-                    on("CONFERENCE_WILL_JOIN", data);
-                }
-
-                @Override
-                public void onConferenceWillLeave(Map<String, Object> data) {
-                    on("CONFERENCE_WILL_LEAVE", data);
-                }
-
-                @Override
-                public void onLoadConfigError(Map<String, Object> data) {
-                    on("LOAD_CONFIG_ERROR", data);
-                }
-            });
-
-            // inviteController
-            final InviteController inviteController
-                = view.getInviteController();
-
-            inviteController.setListener(new InviteControllerListener() {
-                public void beginAddPeople(
-                        AddPeopleController addPeopleController) {
-                    onInviteControllerBeginAddPeople(
-                        inviteController,
-                        addPeopleController);
-                }
-            });
-            inviteController.setAddPeopleEnabled(
-                ADD_PEOPLE_CONTROLLER_QUERY != null);
-            inviteController.setDialOutEnabled(
-                inviteController.isAddPeopleEnabled());
-        }
-
-        return view;
-    }
-
-    private void onAddPeopleControllerInviteSettled(
-            AddPeopleController addPeopleController,
-            List<Map<String, Object>> failedInvitees) {
-        UiThreadUtil.assertOnUiThread();
-
-        // XXX Explicitly invoke endAddPeople on addPeopleController; otherwise,
-        // it is going to be memory-leaked in the associated InviteController
-        // and no subsequent InviteButton clicks/taps will be delivered.
-        // Technically, endAddPeople will automatically be invoked if there are
-        // no failedInviteees i.e. the invite succeeeded for all specified
-        // invitees.
-        addPeopleController.endAddPeople();
-    }
-
-    private void onAddPeopleControllerReceivedResults(
-            AddPeopleController addPeopleController,
-            List<Map<String, Object>> results,
-            String query) {
-        UiThreadUtil.assertOnUiThread();
-
-        int size = results.size();
-
-        if (size > 0) {
-            // Exercise AddPeopleController's inviteById implementation.
-            List<String> ids = new ArrayList<>(size);
-
-            for (Map<String, Object> result : results) {
-                Object id = result.get("id");
-
-                if (id != null) {
-                    ids.add(id.toString());
-                }
-            }
-
-            addPeopleController.inviteById(ids);
-
-            return;
-        }
-
-        // XXX Explicitly invoke endAddPeople on addPeopleController; otherwise,
-        // it is going to be memory-leaked in the associated InviteController
-        // and no subsequent InviteButton clicks/taps will be delivered.
-        addPeopleController.endAddPeople();
-    }
+    // JitsiMeetActivity overrides
+    //
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        // As this is the Jitsi Meet app (i.e. not the Jitsi Meet SDK), we do
-        // want to enable some options.
-
-        // The welcome page defaults to disabled in the SDK at the time of this
-        // writing but it is clearer to be explicit about what we want anyway.
-        setWelcomePageEnabled(true);
-
+        JitsiMeet.showSplashScreen(this);
         super.onCreate(savedInstanceState);
     }
 
-    private void onInviteControllerBeginAddPeople(
-            InviteController inviteController,
-            AddPeopleController addPeopleController) {
-        UiThreadUtil.assertOnUiThread();
+    @Override
+    protected boolean extraInitialize() {
+        Log.d(this.getClass().getSimpleName(), "LIBRE_BUILD="+BuildConfig.LIBRE_BUILD);
 
-        // Log with the tag "ReactNative" in order to have the log visible in
-        // react-native log-android as well.
-        Log.d(
-            "ReactNative",
-            InviteControllerListener.class.getSimpleName() + ".beginAddPeople");
+        // Setup Crashlytics and Firebase Dynamic Links
+        // Here we are using reflection since it may have been disabled at compile time.
+        try {
+            Class<?> cls = Class.forName("org.jitsi.meet.GoogleServicesHelper");
+            Method m = cls.getMethod("initialize", JitsiMeetActivity.class);
+            m.invoke(null, this);
+        } catch (Exception e) {
+            // Ignore any error, the module is not compiled when LIBRE_BUILD is enabled.
+        }
 
-        String query = ADD_PEOPLE_CONTROLLER_QUERY;
-    
-        if (query != null
-                && (inviteController.isAddPeopleEnabled()
-                    || inviteController.isDialOutEnabled())) {
-            addPeopleController.setListener(new AddPeopleControllerListener() {
-                public void onInviteSettled(
-                        AddPeopleController addPeopleController,
-                        List<Map<String, Object>> failedInvitees) {
-                    onAddPeopleControllerInviteSettled(
-                        addPeopleController,
-                        failedInvitees);
+        // In Debug builds React needs permission to write over other apps in
+        // order to display the warning and error overlays.
+        if (BuildConfig.DEBUG) {
+            if (!Settings.canDrawOverlays(this)) {
+                Intent intent
+                    = new Intent(
+                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
+
+                startActivityForResult(intent, OVERLAY_PERMISSION_REQUEST_CODE);
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    @Override
+    protected void initialize() {
+        broadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                // As new restrictions including server URL are received,
+                // conference should be restarted with new configuration.
+                leave();
+                recreate();
+            }
+        };
+        registerReceiver(broadcastReceiver,
+            new IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED));
+
+        resolveRestrictions();
+        setJitsiMeetConferenceDefaultOptions();
+        super.initialize();
+    }
+
+    @Override
+    public void onDestroy() {
+        if (broadcastReceiver != null) {
+            unregisterReceiver(broadcastReceiver);
+            broadcastReceiver = null;
+        }
+
+        super.onDestroy();
+    }
+
+    private void setJitsiMeetConferenceDefaultOptions() {
+        // Set default options
+        JitsiMeetConferenceOptions defaultOptions
+            = new JitsiMeetConferenceOptions.Builder()
+            .setWelcomePageEnabled(true)
+            .setServerURL(buildURL(defaultURL))
+            .setFeatureFlag("call-integration.enabled", false)
+            .setFeatureFlag("resolution", 360)
+            .setFeatureFlag("server-url-change.enabled", !configurationByRestrictions)
+            .build();
+        JitsiMeet.setDefaultConferenceOptions(defaultOptions);
+    }
+
+    private void resolveRestrictions() {
+        RestrictionsManager manager =
+            (RestrictionsManager) getSystemService(Context.RESTRICTIONS_SERVICE);
+        Bundle restrictions = manager.getApplicationRestrictions();
+        Collection<RestrictionEntry> entries = manager.getManifestRestrictions(
+            getApplicationContext().getPackageName());
+        for (RestrictionEntry restrictionEntry : entries) {
+            String key = restrictionEntry.getKey();
+            if (RESTRICTION_SERVER_URL.equals(key)) {
+                // If restrictions are passed to the application.
+                if (restrictions != null &&
+                    restrictions.containsKey(RESTRICTION_SERVER_URL)) {
+                    defaultURL = restrictions.getString(RESTRICTION_SERVER_URL);
+                    configurationByRestrictions = true;
+                // Otherwise use default URL from app-restrictions.xml.
+                } else {
+                    defaultURL = restrictionEntry.getSelectedString();
+                    configurationByRestrictions = false;
                 }
+            }
+        }
+    }
 
-                public void onReceivedResults(
-                        AddPeopleController addPeopleController,
-                        List<Map<String, Object>> results,
-                        String query) {
-                    onAddPeopleControllerReceivedResults(
-                        addPeopleController,
-                        results, query);
-                }
-            });
-            addPeopleController.performQuery(query);
-        } else {
-            // XXX Explicitly invoke endAddPeople on addPeopleController;
-            // otherwise, it is going to be memory-leaked in the associated
-            // InviteController and no subsequent InviteButton clicks/taps will
-            // be delivered.
-            addPeopleController.endAddPeople();
+    @Override
+    public void onConferenceTerminated(Map<String, Object> data) {
+        Log.d(TAG, "Conference terminated: " + data);
+    }
+
+    // Activity lifecycle method overrides
+    //
+
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == OVERLAY_PERMISSION_REQUEST_CODE) {
+            if (Settings.canDrawOverlays(this)) {
+                initialize();
+                return;
+            }
+
+            throw new RuntimeException("Overlay permission is required when running in Debug mode.");
+        }
+
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    // ReactAndroid/src/main/java/com/facebook/react/ReactActivity.java
+    @Override
+    public boolean onKeyUp(int keyCode, KeyEvent event) {
+        if (BuildConfig.DEBUG && keyCode == KeyEvent.KEYCODE_MENU) {
+            JitsiMeet.showDevOptions();
+            return true;
+        }
+
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode);
+
+        Log.d(TAG, "Is in picture-in-picture mode: " + isInPictureInPictureMode);
+
+        if (!isInPictureInPictureMode) {
+            this.startActivity(new Intent(this, getClass())
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT));
+        }
+    }
+
+    // Helper methods
+    //
+
+    private @Nullable URL buildURL(String urlStr) {
+        try {
+            return new URL(urlStr);
+        } catch (MalformedURLException e) {
+            return null;
         }
     }
 }

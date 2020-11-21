@@ -1,4 +1,7 @@
-/* @flow */
+// @flow
+
+import type { Dispatch } from 'redux';
+
 import { getShareInfoText } from '../invite';
 
 import {
@@ -13,7 +16,7 @@ import googleApi from './googleApi';
  *
  * @param {number} fetchStartDays - The number of days to go back when fetching.
  * @param {number} fetchEndDays - The number of days to fetch.
- * @returns {function(Dispatch<*>): Promise<CalendarEntries>}
+ * @returns {function(Dispatch<any>): Promise<CalendarEntries>}
  */
 export function getCalendarEntries(
         fetchStartDays: ?number, fetchEndDays: ?number) {
@@ -26,16 +29,22 @@ export function getCalendarEntries(
 /**
  * Loads Google API.
  *
- * @param {string} clientId - The client ID to be used with the API library.
  * @returns {Function}
  */
-export function loadGoogleAPI(clientId: string) {
-    return (dispatch: Dispatch<*>, getState: Function) =>
+export function loadGoogleAPI() {
+    return (dispatch: Dispatch<any>, getState: Function) =>
         googleApi.get()
         .then(() => {
+            const {
+                liveStreamingEnabled,
+                enableCalendarIntegration,
+                googleApiApplicationClientID
+            } = getState()['features/base/config'];
+
             if (getState()['features/google-api'].googleAPIState
                     === GOOGLE_API_STATES.NEEDS_LOADING) {
-                return googleApi.initializeClient(clientId);
+                return googleApi.initializeClient(
+                    googleApiApplicationClientID, liveStreamingEnabled, enableCalendarIntegration);
             }
 
             return Promise.resolve();
@@ -146,10 +155,10 @@ export function showAccountSelection() {
 /**
  * Prompts the participant to sign in to the Google API Client Library.
  *
- * @returns {function(Dispatch<*>): Promise<string | never>}
+ * @returns {function(Dispatch<any>): Promise<string | never>}
  */
 export function signIn() {
-    return (dispatch: Dispatch<*>) => googleApi.get()
+    return (dispatch: Dispatch<any>) => googleApi.get()
             .then(() => googleApi.signInIfNotSignedIn())
             .then(() => dispatch({
                 type: SET_GOOGLE_API_STATE,
@@ -160,10 +169,10 @@ export function signIn() {
 /**
  * Logs out the user.
  *
- * @returns {function(Dispatch<*>): Promise<string | never>}
+ * @returns {function(Dispatch<any>): Promise<string | never>}
  */
 export function signOut() {
-    return (dispatch: Dispatch<*>) =>
+    return (dispatch: Dispatch<any>) =>
         googleApi.get()
             .then(() => googleApi.signOut())
             .then(() => {
@@ -181,10 +190,10 @@ export function signOut() {
 /**
  * Updates the profile data that is currently used.
  *
- * @returns {function(Dispatch<*>): Promise<string | never>}
+ * @returns {function(Dispatch<any>): Promise<string | never>}
  */
 export function updateProfile() {
-    return (dispatch: Dispatch<*>) => googleApi.get()
+    return (dispatch: Dispatch<any>) => googleApi.get()
         .then(() => googleApi.signInIfNotSignedIn())
         .then(() => dispatch({
             type: SET_GOOGLE_API_STATE,
@@ -207,11 +216,11 @@ export function updateProfile() {
  * @param {string} id - The event id to update.
  * @param {string} calendarId - The calendar id to use.
  * @param {string} location - The location to add to the event.
- * @returns {function(Dispatch<*>): Promise<string | never>}
+ * @returns {function(Dispatch<any>): Promise<string | never>}
  */
 export function updateCalendarEvent(
         id: string, calendarId: string, location: string) {
-    return (dispatch: Dispatch<*>, getState: Function) =>
+    return (dispatch: Dispatch<any>, getState: Function) =>
         getShareInfoText(getState(), location)
             .then(text =>
                 googleApi._updateCalendarEntry(id, calendarId, location, text));

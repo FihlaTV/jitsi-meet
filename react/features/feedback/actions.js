@@ -1,9 +1,15 @@
 // @flow
 
-import { openDialog } from '../base/dialog';
-import { FEEDBACK_REQUEST_IN_PROGRESS } from '../../../modules/UI/UIErrors';
+import type { Dispatch } from 'redux';
 
-import { CANCEL_FEEDBACK, SUBMIT_FEEDBACK } from './actionTypes';
+import { FEEDBACK_REQUEST_IN_PROGRESS } from '../../../modules/UI/UIErrors';
+import { openDialog } from '../base/dialog';
+
+import {
+    CANCEL_FEEDBACK,
+    SUBMIT_FEEDBACK_ERROR,
+    SUBMIT_FEEDBACK_SUCCESS
+} from './actionTypes';
 import { FeedbackDialog } from './components';
 
 declare var config: Object;
@@ -46,10 +52,11 @@ export function maybeOpenFeedbackDialog(conference: Object) {
         showThankYou: boolean
     };
 
-    return (dispatch: Dispatch<*>, getState: Function): Promise<R> => {
+    return (dispatch: Dispatch<any>, getState: Function): Promise<R> => {
         const state = getState();
+        const { feedbackPercentage = 100 } = state['features/base/config'];
 
-        if (interfaceConfig.filmStripOnly || config.iAmRecorder) {
+        if (config.iAmRecorder) {
             // Intentionally fall through the if chain to prevent further action
             // from being taken with regards to showing feedback.
         } else if (state['features/base/dialog'].component === FeedbackDialog) {
@@ -63,7 +70,7 @@ export function maybeOpenFeedbackDialog(conference: Object) {
                 feedbackSubmitted: true,
                 showThankYou: true
             });
-        } else if (conference.isCallstatsEnabled()) {
+        } else if (conference.isCallstatsEnabled() && feedbackPercentage > Math.random() * 100) {
             return new Promise(resolve => {
                 dispatch(openFeedbackDialog(conference, () => {
                     const { submitted } = getState()['features/feedback'];
@@ -112,17 +119,22 @@ export function openFeedbackDialog(conference: Object, onClose: ?Function) {
  * rating.
  * @param {JitsiConference} conference - The JitsiConference for which the
  * feedback is being left.
- * @returns {{
- *     type: SUBMIT_FEEDBACK
- * }}
+ * @returns {Function}
  */
 export function submitFeedback(
         score: number,
         message: string,
         conference: Object) {
-    conference.sendFeedback(score, message);
+    return (dispatch: Dispatch<any>) => conference.sendFeedback(score, message)
+        .then(
+            () => dispatch({ type: SUBMIT_FEEDBACK_SUCCESS }),
+            error => {
+                dispatch({
+                    type: SUBMIT_FEEDBACK_ERROR,
+                    error
+                });
 
-    return {
-        type: SUBMIT_FEEDBACK
-    };
+                return Promise.reject(error);
+            }
+        );
 }

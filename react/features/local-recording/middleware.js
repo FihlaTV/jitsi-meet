@@ -1,42 +1,36 @@
 /* @flow */
 
 import { createShortcutEvent, sendAnalytics } from '../analytics';
-import { APP_WILL_MOUNT, APP_WILL_UNMOUNT } from '../base/app';
-import { CONFERENCE_JOINED } from '../base/conference';
-import { toggleDialog } from '../base/dialog';
+import { APP_WILL_UNMOUNT } from '../base/app/actionTypes';
+import { CONFERENCE_JOINED } from '../base/conference/actionTypes';
+import { toggleDialog } from '../base/dialog/actions';
 import { i18next } from '../base/i18n';
-import { SET_AUDIO_MUTED } from '../base/media';
+import { SET_AUDIO_MUTED } from '../base/media/actionTypes';
 import { MiddlewareRegistry } from '../base/redux';
 import { SETTINGS_UPDATED } from '../base/settings/actionTypes';
-import { showNotification } from '../notifications';
+import { showNotification } from '../notifications/actions';
 
 import { localRecordingEngaged, localRecordingUnengaged } from './actions';
 import { LocalRecordingInfoDialog } from './components';
 import { recordingController } from './controller';
 
 declare var APP: Object;
-declare var config: Object;
 
-const isFeatureEnabled = typeof config === 'object' && config.localRecording
-    && config.localRecording.enabled === true;
-
-isFeatureEnabled
-&& MiddlewareRegistry.register(({ getState, dispatch }) => next => action => {
+MiddlewareRegistry.register(({ getState, dispatch }) => next => action => {
     const result = next(action);
 
     switch (action.type) {
     case CONFERENCE_JOINED: {
-        const { conference } = getState()['features/base/conference'];
         const { localRecording } = getState()['features/base/config'];
+        const isLocalRecordingEnabled = Boolean(
+            localRecording
+            && localRecording.enabled
+            && typeof APP === 'object'
+        );
 
-        if (localRecording && localRecording.format) {
-            recordingController.switchFormat(localRecording.format);
+        if (!isLocalRecordingEnabled) {
+            break;
         }
-
-        recordingController.registerEvents(conference);
-        break;
-    }
-    case APP_WILL_MOUNT:
 
         // realize the delegates on recordingController, allowing the UI to
         // react to state changes in recordingController.
@@ -69,7 +63,17 @@ isFeatureEnabled
                 sendAnalytics(createShortcutEvent('local.recording'));
                 dispatch(toggleDialog(LocalRecordingInfoDialog));
             }, 'keyboardShortcuts.localRecording');
+
+        if (localRecording.format) {
+            recordingController.switchFormat(localRecording.format);
+        }
+
+        const { conference } = getState()['features/base/conference'];
+
+        recordingController.registerEvents(conference);
+
         break;
+    }
     case APP_WILL_UNMOUNT:
         recordingController.onStateChanged = null;
         recordingController.onNotify = null;

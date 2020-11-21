@@ -1,11 +1,10 @@
 // @flow
 
 import React, { Component } from 'react';
-import { connect } from 'react-redux';
 
-import { Dialog, DialogContent } from '../../base/dialog';
+import { ConfirmDialog } from '../../base/dialog';
 import { translate } from '../../base/i18n';
-
+import { connect } from '../../base/redux';
 import { updateCalendarEvent } from '../actions';
 
 type Props = {
@@ -49,15 +48,9 @@ class UpdateCalendarEventDialog extends Component<Props> {
      */
     render() {
         return (
-            <Dialog
-                okTitleKey = 'dialog.confirm'
-                onSubmit = { this._onSubmit }
-                titleKey = 'calendarSync.confirmAddLinkTitle'
-                width = 'small'>
-                <DialogContent>
-                    { this.props.t('calendarSync.confirmAddLink') }
-                </DialogContent>
-            </Dialog>
+            <ConfirmDialog
+                contentKey = 'calendarSync.confirmAddLink'
+                onSubmit = { this._onSubmit } />
         );
     }
 

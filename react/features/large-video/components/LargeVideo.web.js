@@ -3,22 +3,41 @@
 import React, { Component } from 'react';
 
 import { Watermarks } from '../../base/react';
+import { connect } from '../../base/redux';
+import { InviteMore, Subject } from '../../conference';
+import { fetchCustomBrandingData } from '../../dynamic-branding';
 import { Captions } from '../../subtitles/';
-
-import Labels from './Labels';
 
 declare var interfaceConfig: Object;
 
-/**
- * The type of the React {@code Component} props of {@link LargeVideo}.
- */
 type Props = {
 
     /**
-     * True if the {@code VideoQualityLabel} should not be displayed.
+     * The user selected background color.
      */
-    hideVideoQualityLabel: boolean
-};
+     _customBackgroundColor: string,
+
+    /**
+     * The user selected background image url.
+     */
+     _customBackgroundImageUrl: string,
+
+    /**
+     * Fetches the branding data.
+     */
+    _fetchCustomBrandingData: Function,
+
+    /**
+     * Prop that indicates whether the chat is open.
+     */
+    _isChatOpen: boolean,
+
+    /**
+     * Used to determine the value of the autoplay attribute of the underlying
+     * video element.
+     */
+    _noAutoPlayVideo: boolean
+}
 
 /**
  * Implements a React {@link Component} which represents the large video (a.k.a.
@@ -26,7 +45,16 @@ type Props = {
  *
  * @extends Component
  */
-export default class LargeVideo extends Component<Props> {
+class LargeVideo extends Component<Props> {
+    /**
+     * Implements React's {@link Component#componentDidMount}.
+     *
+     * @inheritdoc
+     */
+    componentDidMount() {
+        this.props._fetchCustomBrandingData();
+    }
+
     /**
      * Implements React's {@link Component#render()}.
      *
@@ -34,10 +62,16 @@ export default class LargeVideo extends Component<Props> {
      * @returns {React$Element}
      */
     render() {
+        const style = this._getCustomSyles();
+        const className = `videocontainer${this.props._isChatOpen ? ' shift-right' : ''}`;
+
         return (
             <div
-                className = 'videocontainer'
-                id = 'largeVideoContainer'>
+                className = { className }
+                id = 'largeVideoContainer'
+                style = { style }>
+                <Subject />
+                <InviteMore />
                 <div id = 'sharedVideo'>
                     <div id = 'sharedVideoIFrame' />
                 </div>
@@ -47,9 +81,7 @@ export default class LargeVideo extends Component<Props> {
 
                 <div id = 'dominantSpeaker'>
                     <div className = 'dynamic-shadow' />
-                    <img
-                        id = 'dominantSpeakerAvatar'
-                        src = '' />
+                    <div id = 'dominantSpeakerAvatarContainer' />
                 </div>
                 <div id = 'remotePresenceMessage' />
                 <span id = 'remoteConnectionMessage' />
@@ -66,17 +98,62 @@ export default class LargeVideo extends Component<Props> {
                       */}
                     <div id = 'largeVideoWrapper'>
                         <video
-                            autoPlay = { true }
+                            autoPlay = { !this.props._noAutoPlayVideo }
                             id = 'largeVideo'
-                            muted = { true } />
+                            muted = { true }
+                            playsInline = { true } /* for Safari on iOS to work */ />
                     </div>
                 </div>
                 { interfaceConfig.DISABLE_TRANSCRIPTION_SUBTITLES
                     || <Captions /> }
-                <span id = 'localConnectionMessage' />
-                { this.props.hideVideoQualityLabel
-                    || <Labels /> }
             </div>
         );
     }
+
+    /**
+     * Creates the custom styles object.
+     *
+     * @private
+     * @returns {Object}
+     */
+    _getCustomSyles() {
+        const styles = {};
+        const { _customBackgroundColor, _customBackgroundImageUrl } = this.props;
+
+        styles.backgroundColor = _customBackgroundColor || interfaceConfig.DEFAULT_BACKGROUND;
+
+        if (_customBackgroundImageUrl) {
+            styles.backgroundImage = `url(${_customBackgroundImageUrl})`;
+            styles.backgroundSize = 'cover';
+        }
+
+        return styles;
+    }
 }
+
+
+/**
+ * Maps (parts of) the Redux state to the associated LargeVideo props.
+ *
+ * @param {Object} state - The Redux state.
+ * @private
+ * @returns {Props}
+ */
+function _mapStateToProps(state) {
+    const testingConfig = state['features/base/config'].testing;
+    const { backgroundColor, backgroundImageUrl } = state['features/dynamic-branding'];
+    const { isOpen: isChatOpen } = state['features/chat'];
+
+    return {
+        _customBackgroundColor: backgroundColor,
+        _customBackgroundImageUrl: backgroundImageUrl,
+        _isChatOpen: isChatOpen,
+        _noAutoPlayVideo: testingConfig?.noAutoPlayVideo
+    };
+}
+
+const _mapDispatchToProps = {
+    _fetchCustomBrandingData: fetchCustomBrandingData
+};
+
+export default connect(_mapStateToProps, _mapDispatchToProps)(LargeVideo);

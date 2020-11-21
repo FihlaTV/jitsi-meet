@@ -1,4 +1,6 @@
-/* @flow */
+// @flow
+
+import type { Dispatch } from 'redux';
 
 import {
     getCalendarEntries,
@@ -29,7 +31,7 @@ export const googleCalendarApi = {
     /**
      * Returns the email address for the currently logged in user.
      *
-     * @returns {function(Dispatch<*>): Promise<string|never>}
+     * @returns {function(Dispatch<any>): Promise<string|never>}
      */
     getCurrentEmail() {
         return updateProfile();
@@ -38,21 +40,16 @@ export const googleCalendarApi = {
     /**
      * Initializes the google api if needed.
      *
-     * @returns {function(Dispatch<*>, Function): Promise<void>}
+     * @returns {function(Dispatch<any>, Function): Promise<void>}
      */
     load() {
-        return (dispatch: Dispatch<*>, getState: Function) => {
-            const { googleApiApplicationClientID }
-                = getState()['features/base/config'];
-
-            return dispatch(loadGoogleAPI(googleApiApplicationClientID));
-        };
+        return (dispatch: Dispatch<any>) => dispatch(loadGoogleAPI());
     },
 
     /**
      * Prompts the participant to sign in to the Google API Client Library.
      *
-     * @returns {function(Dispatch<*>): Promise<string|never>}
+     * @returns {function(Dispatch<any>): Promise<string|never>}
      */
     signIn,
 
@@ -72,7 +69,7 @@ export const googleCalendarApi = {
      * @param {string} id - The event id.
      * @param {string} calendarId - The id of the calendar to use.
      * @param {string} location - The location to save to the event.
-     * @returns {function(Dispatch<*>): Promise<string|never>}
+     * @returns {function(Dispatch<any>): Promise<string|never>}
      */
     updateCalendarEvent
 };

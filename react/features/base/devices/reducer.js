@@ -1,15 +1,22 @@
+import { ReducerRegistry } from '../redux';
+
 import {
+    ADD_PENDING_DEVICE_REQUEST,
+    REMOVE_PENDING_DEVICE_REQUESTS,
     SET_AUDIO_INPUT_DEVICE,
     SET_VIDEO_INPUT_DEVICE,
     UPDATE_DEVICE_LIST
 } from './actionTypes';
-
-import { ReducerRegistry } from '../redux';
+import { groupDevicesByKind } from './functions';
+import logger from './logger';
 
 const DEFAULT_STATE = {
-    audioInput: [],
-    audioOutput: [],
-    videoInput: []
+    availableDevices: {
+        audioInput: [],
+        audioOutput: [],
+        videoInput: []
+    },
+    pendingRequests: []
 };
 
 /**
@@ -27,36 +34,42 @@ ReducerRegistry.register(
     (state = DEFAULT_STATE, action) => {
         switch (action.type) {
         case UPDATE_DEVICE_LIST: {
-            const deviceList = _groupDevicesByKind(action.devices);
+            const deviceList = groupDevicesByKind(action.devices);
 
             return {
-                ...deviceList
+                ...state,
+                availableDevices: deviceList
             };
         }
 
-        // TODO: Changing of current audio and video device id is currently
-        // handled outside of react/redux. Fall through to default logic for
-        // now.
-        case SET_AUDIO_INPUT_DEVICE:
-        case SET_VIDEO_INPUT_DEVICE:
+        case ADD_PENDING_DEVICE_REQUEST:
+            return {
+                ...state,
+                pendingRequests: [
+                    ...state.pendingRequests,
+                    action.request
+                ]
+            };
+
+        case REMOVE_PENDING_DEVICE_REQUESTS:
+            return {
+                ...state,
+                pendingRequests: [ ]
+            };
+
+        // TODO: Changing of current audio and video device id is currently handled outside of react/redux.
+        case SET_AUDIO_INPUT_DEVICE: {
+            logger.debug(`set audio input device: ${action.deviceId}`);
+
+            return state;
+        }
+        case SET_VIDEO_INPUT_DEVICE: {
+            logger.debug(`set video input device: ${action.deviceId}`);
+
+            return state;
+        }
         default:
             return state;
         }
     });
 
-/**
- * Converts an array of media devices into an object organized by device kind.
- *
- * @param {Array<MediaDeviceInfo>} devices - Available media devices.
- * @private
- * @returns {Object} An object with the media devices split by type. The keys
- * are device type and the values are arrays with devices matching the device
- * type.
- */
-function _groupDevicesByKind(devices) {
-    return {
-        audioInput: devices.filter(device => device.kind === 'audioinput'),
-        audioOutput: devices.filter(device => device.kind === 'audiooutput'),
-        videoInput: devices.filter(device => device.kind === 'videoinput')
-    };
-}

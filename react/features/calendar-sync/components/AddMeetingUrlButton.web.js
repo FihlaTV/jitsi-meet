@@ -1,16 +1,16 @@
 // @flow
 
-import Button from '@atlaskit/button';
-import React, { Component } from 'react';
-import { connect } from 'react-redux';
 import Tooltip from '@atlaskit/tooltip';
+import React, { Component } from 'react';
+import type { Dispatch } from 'redux';
 
 import {
     createCalendarClickedEvent,
     sendAnalytics
 } from '../../analytics';
 import { translate } from '../../base/i18n';
-
+import { Icon, IconAdd } from '../../base/icons';
+import { connect } from '../../base/redux';
 import { updateCalendarEvent } from '../actions';
 
 /**
@@ -26,7 +26,7 @@ type Props = {
     /**
      * Invoked to add a meeting URL to a calendar event.
      */
-    dispatch: Dispatch<*>,
+    dispatch: Dispatch<any>,
 
     /**
      * The ID of the calendar event that will have a meeting URL added on click.
@@ -65,12 +65,11 @@ class AddMeetingUrlButton extends Component<Props> {
     render() {
         return (
             <Tooltip content = { this.props.t('calendarSync.addMeetingURL') }>
-                <Button
-                    appearance = 'primary'
-                    onClick = { this._onClick }
-                    type = 'button'>
-                    <i className = { 'icon-add' } />
-                </Button>
+                <div
+                    className = 'button add-button'
+                    onClick = { this._onClick }>
+                    <Icon src = { IconAdd } />
+                </div>
             </Tooltip>
         );
     }
@@ -92,4 +91,3 @@ class AddMeetingUrlButton extends Component<Props> {
 }
 
 export default translate(connect()(AddMeetingUrlButton));
-

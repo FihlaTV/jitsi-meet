@@ -2,12 +2,12 @@
 
 import React, { Component } from 'react';
 import { View } from 'react-native';
-import { connect } from 'react-redux';
 
 import { getLocalParticipant } from '../../../base/participants';
+import { connect } from '../../../base/redux';
 
-import styles from '../styles';
 import Thumbnail from './Thumbnail';
+import styles from './styles';
 
 type Props = {
 

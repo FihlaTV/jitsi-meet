@@ -1,6 +1,7 @@
 // @flow
 
 import { Component } from 'react';
+import type { Dispatch } from 'redux';
 
 import { hideDialog } from '../actions';
 import type { DialogProps } from '../constants';
@@ -8,13 +9,12 @@ import type { DialogProps } from '../constants';
 /**
  * The type of the React {@code Component} props of {@link AbstractDialog}.
  */
-export type Props = {
-    ...DialogProps,
+export type Props = DialogProps & {
 
     /**
      * Used to show/hide the dialog on cancel.
      */
-    dispatch: Dispatch<*>
+    dispatch: Dispatch<any>
 };
 
 /**
@@ -49,12 +49,12 @@ export default class AbstractDialog<P : Props, S : State>
     }
 
     /**
-     * Implements React's {@link Component#componentWillMount()}. Invoked
+     * Implements React's {@link Component#componentDidMount()}. Invoked
      * immediately before mounting occurs.
      *
      * @inheritdoc
      */
-    componentWillMount() {
+    componentDidMount() {
         this._mounted = true;
     }
 

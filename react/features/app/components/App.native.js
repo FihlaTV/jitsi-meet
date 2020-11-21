@@ -1,34 +1,26 @@
 // @flow
 
 import React from 'react';
-import { Linking } from 'react-native';
+import SplashScreen from 'react-native-splash-screen';
 
-import '../../analytics';
-import '../../authentication';
+import { setColorScheme } from '../../base/color-scheme';
 import { DialogContainer } from '../../base/dialog';
-import '../../base/jwt';
+import { updateFlags } from '../../base/flags/actions';
+import { CALL_INTEGRATION_ENABLED, SERVER_URL_CHANGE_ENABLED } from '../../base/flags/constants';
+import { getFeatureFlag } from '../../base/flags/functions';
 import { Platform } from '../../base/react';
-import {
-    AspectRatioDetector,
-    ReducedUIDetector
-} from '../../base/responsive-ui';
-import '../../google-api';
-import '../../mobile/audio-mode';
-import '../../mobile/background';
-import '../../mobile/callkit';
-import '../../mobile/external-api';
-import '../../mobile/full-screen';
-import '../../mobile/permissions';
-import '../../mobile/picture-in-picture';
-import '../../mobile/proximity';
-import '../../mobile/wake-lock';
+import { DimensionsDetector, clientResized } from '../../base/responsive-ui';
+import { updateSettings } from '../../base/settings';
+import logger from '../logger';
 
 import { AbstractApp } from './AbstractApp';
 import type { Props as AbstractAppProps } from './AbstractApp';
 
-declare var __DEV__;
+// Register middlewares and reducers.
+import '../middlewares';
+import '../reducers';
 
-const logger = require('jitsi-meet-logger').getLogger(__filename);
+declare var __DEV__;
 
 /**
  * The type of React {@code Component} props of {@link App}.
@@ -36,28 +28,24 @@ const logger = require('jitsi-meet-logger').getLogger(__filename);
 type Props = AbstractAppProps & {
 
     /**
-     * Whether the add people feature is enabled.
+     * An object of colors that override the default colors of the app/sdk.
      */
-    addPeopleEnabled: boolean,
+    colorScheme: ?Object,
 
     /**
-     * Whether the dial-out feature is enabled.
+     * Identifier for this app on the native side.
      */
-    dialOutEnabled: boolean,
+    externalAPIScope: string,
 
     /**
-     * Whether Picture-in-Picture is enabled. If {@code true}, a toolbar button
-     * is rendered in the {@link Conference} view to afford entering
-     * Picture-in-Picture.
+     * An object with the feature flags.
      */
-    pictureInPictureEnabled: boolean,
+    flags: Object,
 
     /**
-     * Whether the Welcome page is enabled. If {@code true}, the Welcome page is
-     * rendered when the {@link App} is not at a location (URL) identifying
-     * a Jitsi Meet conference/room.
+     * An object with user information (display name, email, avatar URL).
      */
-    welcomePageEnabled: boolean
+    userInfo: ?Object
 };
 
 /**
@@ -66,6 +54,8 @@ type Props = AbstractAppProps & {
  * @extends AbstractApp
  */
 export class App extends AbstractApp {
+    _init: Promise<*>;
+
     /**
      * Initializes a new {@code App} instance.
      *
@@ -75,57 +65,72 @@ export class App extends AbstractApp {
     constructor(props: Props) {
         super(props);
 
-        // Bind event handlers so they are only bound once for every instance.
-        this._onLinkingURL = this._onLinkingURL.bind(this);
-
         // In the Release configuration, React Native will (intentionally) throw
         // an unhandled JavascriptException for an unhandled JavaScript error.
         // This will effectively kill the app. In accord with the Web, do not
         // kill the app.
         this._maybeDisableExceptionsManager();
+
+        // Bind event handler so it is only bound once per instance.
+        this._onDimensionsChanged = this._onDimensionsChanged.bind(this);
     }
 
     /**
-     * Subscribe to notifications about activating URLs registered to be handled
-     * by this app.
+     * Initializes the color scheme.
      *
      * @inheritdoc
-     * @returns {void}
-     * @see https://facebook.github.io/react-native/docs/linking.html
-     */
-    componentWillMount() {
-        super.componentWillMount();
-
-        Linking.addEventListener('url', this._onLinkingURL);
-    }
-
-    /**
-     * Unsubscribe from notifications about activating URLs registered to be
-     * handled by this app.
      *
-     * @inheritdoc
      * @returns {void}
-     * @see https://facebook.github.io/react-native/docs/linking.html
      */
-    componentWillUnmount() {
-        Linking.removeEventListener('url', this._onLinkingURL);
+    componentDidMount() {
+        super.componentDidMount();
 
-        super.componentWillUnmount();
+        SplashScreen.hide();
+
+        this._init.then(() => {
+            const { dispatch, getState } = this.state.store;
+
+            // We set these early enough so then we avoid any unnecessary re-renders.
+            dispatch(setColorScheme(this.props.colorScheme));
+            dispatch(updateFlags(this.props.flags));
+
+            // Check if serverURL is configured externally and not allowed to change.
+            const serverURLChangeEnabled = getFeatureFlag(getState(), SERVER_URL_CHANGE_ENABLED, true);
+
+            if (!serverURLChangeEnabled) {
+                // As serverURL is provided externally, so we push it to settings.
+                if (typeof this.props.url !== 'undefined') {
+                    const { serverURL } = this.props.url;
+
+                    if (typeof serverURL !== 'undefined') {
+                        dispatch(updateSettings({ serverURL }));
+                    }
+                }
+            }
+
+            dispatch(updateSettings(this.props.userInfo || {}));
+
+            // Update settings with feature-flag.
+            const callIntegrationEnabled = this.props.flags[CALL_INTEGRATION_ENABLED];
+
+            if (typeof callIntegrationEnabled !== 'undefined') {
+                dispatch(updateSettings({ disableCallIntegration: !callIntegrationEnabled }));
+            }
+        });
     }
 
     /**
-     * Injects {@link AspectRatioDetector} in order to detect the aspect ratio
-     * of this {@code App}'s user interface and afford {@link AspectRatioAware}.
+     * Overrides the parent method to inject {@link DimensionsDetector} as
+     * the top most component.
      *
      * @override
      */
     _createMainElement(component, props) {
         return (
-            <AspectRatioDetector>
-                <ReducedUIDetector>
-                    { super._createMainElement(component, props) }
-                </ReducedUIDetector>
-            </AspectRatioDetector>
+            <DimensionsDetector
+                onDimensionsChanged = { this._onDimensionsChanged }>
+                { super._createMainElement(component, props) }
+            </DimensionsDetector>
         );
     }
 
@@ -166,20 +171,20 @@ export class App extends AbstractApp {
         }
     }
 
-    _onLinkingURL: (*) => void;
+    _onDimensionsChanged: (width: number, height: number) => void;
 
     /**
-     * Notified by React's Linking API that a specific URL registered to be
-     * handled by this app was activated.
+     * Updates the known available size for the app to occupy.
      *
-     * @param {Object} event - The details of the notification/event.
-     * @param {string} event.url - The URL registered to be handled by this app
-     * which was activated.
+     * @param {number} width - The component's current width.
+     * @param {number} height - The component's current height.
      * @private
      * @returns {void}
      */
-    _onLinkingURL({ url }) {
-        super._openURL(url);
+    _onDimensionsChanged(width: number, height: number) {
+        const { dispatch } = this.state.store;
+
+        dispatch(clientResized(width, height));
     }
 
     /**

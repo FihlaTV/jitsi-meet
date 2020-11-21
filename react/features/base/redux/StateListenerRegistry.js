@@ -1,6 +1,9 @@
 // @flow
 
-const logger = require('jitsi-meet-logger').getLogger(__filename);
+import type { Store } from 'redux';
+
+import { equals } from './functions';
+import logger from './logger';
 
 /**
  * The type listener supported for registration with
@@ -16,7 +19,8 @@ const logger = require('jitsi-meet-logger').getLogger(__filename);
  * invoked only if {@code prevSelection} and {@code selection} are different.
  * Immutable!
  */
-type Listener = (selection: any, store: Store, prevSelection: any) => void;
+type Listener
+    = (selection: any, store: Store<*, *>, prevSelection: any) => void;
 
 /**
  * The type selector supported for registration with
@@ -35,6 +39,18 @@ type Listener = (selection: any, store: Store, prevSelection: any) => void;
 type Selector = (state: Object, prevSelection: any) => any;
 
 /**
+ * Options that can be passed to the register method.
+ */
+type RegistrationOptions = {
+
+    /**
+     * @property {boolean} [deepEquals=false] - whether or not a deep equals check should be performed on the selection
+     * returned by {@link Selector}.
+     */
+    deepEquals: ?boolean
+}
+
+/**
  * A type of a {@link Selector}-{@link Listener} association in which the
  * {@code Listener} listens to changes in the values derived from a redux
  * store/state by the {@code Selector}.
@@ -46,6 +62,11 @@ type SelectorListener = {
      * {@link selector}.
      */
     listener: Listener,
+
+    /**
+     * The {@link RegistrationOptions} passed during the registration to be applied on the listener.
+     */
+    options: ?RegistrationOptions,
 
     /**
      * The {@code Selector} which selects values whose changes are listened to
@@ -65,7 +86,10 @@ class StateListenerRegistry {
      */
     _selectorListeners: Set<SelectorListener> = new Set();
 
-    _listener: (Store) => void;
+    _listener: ({
+        prevSelections: Map<SelectorListener, any>,
+        store: Store<*, *>
+    }) => void;
 
     /**
      * Invoked by a specific redux store any time an action is dispatched, and
@@ -78,7 +102,7 @@ class StateListenerRegistry {
      */
     _listener({ prevSelections, store }: {
             prevSelections: Map<SelectorListener, any>,
-            store: Store
+            store: Store<*, *>
     }) {
         for (const selectorListener of this._selectorListeners) {
             const prevSelection = prevSelections.get(selectorListener);
@@ -88,8 +112,10 @@ class StateListenerRegistry {
                     = selectorListener.selector(
                         store.getState(),
                         prevSelection);
+                const useDeepEquals = selectorListener?.options?.deepEquals;
 
-                if (prevSelection !== selection) {
+                if ((useDeepEquals && !equals(prevSelection, selection))
+                        || (!useDeepEquals && prevSelection !== selection)) {
                     prevSelections.set(selectorListener, selection);
                     selectorListener.listener(selection, store, prevSelection);
                 }
@@ -111,12 +137,14 @@ class StateListenerRegistry {
      * @param {Function} listener - The listener to register with this
      * {@code StateListenerRegistry} so that it gets invoked when the value
      * returned by the specified {@code selector} changes.
+     * @param {RegistrationOptions} [options] - Any options to be applied to the registration.
      * @returns {void}
      */
-    register(selector: Selector, listener: Listener) {
+    register(selector: Selector, listener: Listener, options: ?RegistrationOptions) {
         this._selectorListeners.add({
             listener,
-            selector
+            selector,
+            options
         });
     }
 
@@ -129,7 +157,7 @@ class StateListenerRegistry {
      * {@code StateListenerRegistry} is to {@code subscribe}.
      * @returns {void}
      */
-    subscribe(store: Store) {
+    subscribe(store: Store<*, *>) {
         // XXX If StateListenerRegistry is not utilized by the app to listen to
         // state changes, do not bother subscribing to the store at all.
         if (this._selectorListeners.size) {

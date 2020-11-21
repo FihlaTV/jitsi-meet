@@ -1,14 +1,12 @@
 // @flow
 
-import React, { Component } from 'react';
+import { Component } from 'react';
 
-import { Dialog } from '../../../base/dialog';
 import {
-    createRecordingDialogEvent,
+    createLiveStreamingDialogEvent,
     sendAnalytics
 } from '../../../analytics';
 import { JitsiRecordingConstants } from '../../../base/lib-jitsi-meet';
-
 import { getActiveSession } from '../../functions';
 
 /**
@@ -53,24 +51,6 @@ export default class AbstractStopLiveStreamDialog extends Component<Props> {
         this._onSubmit = this._onSubmit.bind(this);
     }
 
-    /**
-     * Implements React's {@link Component#render()}.
-     *
-     * @inheritdoc
-     * @returns {ReactElement}
-     */
-    render() {
-        return (
-            <Dialog
-                okTitleKey = 'dialog.stopLiveStreaming'
-                onSubmit = { this._onSubmit }
-                titleKey = 'dialog.liveStreaming'
-                width = 'small'>
-                { this._renderDialogContent() }
-            </Dialog>
-        );
-    }
-
     _onSubmit: () => boolean;
 
     /**
@@ -80,7 +60,7 @@ export default class AbstractStopLiveStreamDialog extends Component<Props> {
      * @returns {boolean} True to close the modal.
      */
     _onSubmit() {
-        sendAnalytics(createRecordingDialogEvent('stop', 'confirm.button'));
+        sendAnalytics(createLiveStreamingDialogEvent('stop', 'confirm.button'));
 
         const { _session } = this.props;
 
@@ -90,14 +70,6 @@ export default class AbstractStopLiveStreamDialog extends Component<Props> {
 
         return true;
     }
-
-    /**
-     * Function to be implemented by the platform specific implementations.
-     *
-     * @private
-     * @returns {React$Component<*>}
-     */
-    _renderDialogContent: () => React$Component<*>
 }
 
 /**

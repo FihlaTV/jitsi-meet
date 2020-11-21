@@ -13,6 +13,16 @@ export type Props = {
     appearance: string,
 
     /**
+     * Callback invoked when the custom button is clicked.
+     */
+    customActionHandler: Function,
+
+    /**
+     * The text to display as button in the notification for the custom action.
+     */
+    customActionNameKey: string,
+
+    /**
      * The text to display in the body of the notification. If not passed
      * in, the passed in descriptionKey will be used.
      */
@@ -44,6 +54,11 @@ export type Props = {
      * Whether or not the dismiss button should be displayed.
      */
     isDismissAllowed: boolean,
+
+    /**
+     * Maximum lines of the description.
+     */
+    maxLines: ?number,
 
     /**
      * Callback invoked when the user clicks to dismiss the notification.
@@ -131,6 +146,18 @@ export default class AbstractNotification<P: Props> extends Component<P> {
         description && descriptionArray.push(description);
 
         return descriptionArray;
+    }
+
+    _getDescriptionKey: () => string
+
+    /**
+     * Returns the description key that was used if any.
+     *
+     * @protected
+     * @returns {string}
+     */
+    _getDescriptionKey() {
+        return this.props.descriptionKey;
     }
 
     _onDismissed: () => void;

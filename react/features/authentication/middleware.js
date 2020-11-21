@@ -1,6 +1,8 @@
 // @flow
 
-import { appNavigate } from '../app';
+import type { Dispatch } from 'redux';
+
+import { appNavigate } from '../app/actions';
 import {
     CONFERENCE_FAILED,
     CONFERENCE_JOINED,
@@ -15,16 +17,16 @@ import {
 import { MiddlewareRegistry } from '../base/redux';
 
 import {
+    CANCEL_LOGIN,
+    STOP_WAIT_FOR_OWNER,
+    WAIT_FOR_OWNER
+} from './actionTypes';
+import {
     _openLoginDialog,
     _openWaitForOwnerDialog,
     stopWaitForOwner,
     waitForOwner
 } from './actions';
-import {
-    CANCEL_LOGIN,
-    STOP_WAIT_FOR_OWNER,
-    WAIT_FOR_OWNER
-} from './actionTypes';
 import { LoginDialog, WaitForOwnerDialog } from './components';
 
 /**
@@ -160,7 +162,7 @@ function _clearExistingWaitForOwnerTimeout(
  * @param {Object} store - The redux store.
  * @returns {void}
  */
-function _hideLoginDialog({ dispatch }: { dispatch: Dispatch<*> }) {
+function _hideLoginDialog({ dispatch }: { dispatch: Dispatch<any> }) {
     dispatch(hideDialog(LoginDialog));
 }
 

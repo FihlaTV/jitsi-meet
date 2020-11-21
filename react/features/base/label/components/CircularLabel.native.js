@@ -2,6 +2,7 @@
 import React from 'react';
 import { Animated, Text } from 'react-native';
 
+import Icon from '../../icons/components/Icon';
 import { combineStyles, type StyleType } from '../../styles';
 
 import AbstractCircularLabel, {
@@ -64,17 +65,24 @@ export default class CircularLabel extends AbstractCircularLabel<Props, State> {
         this.state = {
             pulseAnimation: new Animated.Value(0)
         };
-
-        this._maybeToggleAnimation({}, props);
     }
 
     /**
-     * Implements {@code Component#componentWillReceiveProps}.
+     * Implements {@code Component#componentDidMount}.
      *
      * @inheritdoc
      */
-    componentWillReceiveProps(newProps: Props) {
-        this._maybeToggleAnimation(this.props, newProps);
+    componentDidMount() {
+        this._maybeToggleAnimation({}, this.props);
+    }
+
+    /**
+     * Implements {@code Component#componentDidUpdate}.
+     *
+     * @inheritdoc
+     */
+    componentDidUpdate(prevProps: Props) {
+        this._maybeToggleAnimation(prevProps, this.props);
     }
 
     /**
@@ -83,7 +91,7 @@ export default class CircularLabel extends AbstractCircularLabel<Props, State> {
      * @inheritdoc
      */
     render() {
-        const { status, label, style } = this.props;
+        const { icon, label, status, style } = this.props;
 
         let extraStyle = null;
 
@@ -98,15 +106,24 @@ export default class CircularLabel extends AbstractCircularLabel<Props, State> {
             break;
         }
 
+        const labelComponent = icon
+            ? (
+                <Icon
+                    src = { icon }
+                    style = { styles.indicatorIcon } />
+            ) : (
+                <Text style = { styles.indicatorText }>
+                    { label }
+                </Text>
+            );
+
         return (
             <Animated.View
                 style = { [
                     combineStyles(styles.indicatorContainer, style),
                     extraStyle
                 ] }>
-                <Text style = { styles.indicatorText }>
-                    { label }
-                </Text>
+                { labelComponent }
             </Animated.View>
         );
     }

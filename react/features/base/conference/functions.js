@@ -1,5 +1,7 @@
 // @flow
 
+import _ from 'lodash';
+
 import { JitsiTrackErrors } from '../lib-jitsi-meet';
 import {
     getLocalParticipant,
@@ -9,16 +11,14 @@ import {
     participantLeft
 } from '../participants';
 import { toState } from '../redux';
+import { safeDecodeURIComponent } from '../util';
 
 import {
-    AVATAR_ID_COMMAND,
     AVATAR_URL_COMMAND,
     EMAIL_COMMAND,
-    JITSI_CONFERENCE_URL_KEY,
-    VIDEO_QUALITY_LEVELS
+    JITSI_CONFERENCE_URL_KEY
 } from './constants';
-
-const logger = require('jitsi-meet-logger').getLogger(__filename);
+import logger from './logger';
 
 /**
  * Attach a set of local tracks to a conference.
@@ -73,6 +73,7 @@ export function commonUserJoinedHandling(
     } else {
         dispatch(participantJoined({
             botType: user.getBotType(),
+            connectionStatus: user.getConnectionStatus(),
             conference,
             id,
             name: displayName,
@@ -146,6 +147,51 @@ export function forEachConference(
 }
 
 /**
+ * Returns the display name of the conference.
+ *
+ * @param {Function | Object} stateful - Reference that can be resolved to Redux
+ * state with the {@code toState} function.
+ * @returns {string}
+ */
+export function getConferenceName(stateful: Function | Object): string {
+    const state = toState(stateful);
+    const { callee } = state['features/base/jwt'];
+    const { callDisplayName } = state['features/base/config'];
+    const { pendingSubjectChange, room, subject } = state['features/base/conference'];
+
+    return pendingSubjectChange
+        || subject
+        || callDisplayName
+        || (callee && callee.name)
+        || safeStartCase(safeDecodeURIComponent(room));
+}
+
+/**
+ * Returns the name of the conference formated for the title.
+ *
+ * @param {Function | Object} stateful - Reference that can be resolved to Redux state with the {@code toState}
+ * function.
+ * @returns {string} - The name of the conference formated for the title.
+ */
+export function getConferenceNameForTitle(stateful: Function | Object) {
+    return safeStartCase(safeDecodeURIComponent(toState(stateful)['features/base/conference'].room));
+}
+
+/**
+* Returns the UTC timestamp when the first participant joined the conference.
+*
+* @param {Function | Object} stateful - Reference that can be resolved to Redux
+* state with the {@code toState} function.
+* @returns {number}
+*/
+export function getConferenceTimestamp(stateful: Function | Object): number {
+    const state = toState(stateful);
+    const { conferenceTimestamp } = state['features/base/conference'];
+
+    return conferenceTimestamp;
+}
+
+/**
  * Returns the current {@code JitsiConference} which is joining or joined and is
  * not leaving. Please note the contrast with merely reading the
  * {@code conference} state of the feature base/conference which is not joining
@@ -156,50 +202,30 @@ export function forEachConference(
  * @returns {JitsiConference|undefined}
  */
 export function getCurrentConference(stateful: Function | Object) {
-    const { conference, joining, leaving }
+    const { conference, joining, leaving, membersOnly, passwordRequired }
         = toState(stateful)['features/base/conference'];
 
-    return (
-        conference
-            ? conference === leaving ? undefined : conference
-            : joining);
-}
-
-/**
- * Finds the nearest match for the passed in {@link availableHeight} to am
- * enumerated value in {@code VIDEO_QUALITY_LEVELS}.
- *
- * @param {number} availableHeight - The height to which a matching video
- * quality level should be found.
- * @returns {number} The closest matching value from
- * {@code VIDEO_QUALITY_LEVELS}.
- */
-export function getNearestReceiverVideoQualityLevel(availableHeight: number) {
-    const qualityLevels = [
-        VIDEO_QUALITY_LEVELS.HIGH,
-        VIDEO_QUALITY_LEVELS.STANDARD,
-        VIDEO_QUALITY_LEVELS.LOW
-    ];
-
-    let selectedLevel = qualityLevels[0];
-
-    for (let i = 1; i < qualityLevels.length; i++) {
-        const previousValue = qualityLevels[i - 1];
-        const currentValue = qualityLevels[i];
-        const diffWithCurrent = Math.abs(availableHeight - currentValue);
-        const diffWithPrevious = Math.abs(availableHeight - previousValue);
-
-        if (diffWithCurrent < diffWithPrevious) {
-            selectedLevel = currentValue;
-        }
+    // There is a precendence
+    if (conference) {
+        return conference === leaving ? undefined : conference;
     }
 
-    return selectedLevel;
+    return joining || passwordRequired || membersOnly;
 }
 
 /**
- * Handle an error thrown by the backend (i.e. lib-jitsi-meet) while
- * manipulating a conference participant (e.g. pin or select participant).
+ * Returns the stored room name.
+ *
+ * @param {Object} state - The current state of the app.
+ * @returns {string}
+ */
+export function getRoomName(state: Object): string {
+    return state['features/base/conference'].room;
+}
+
+/**
+ * Handle an error thrown by the backend (i.e. {@code lib-jitsi-meet}) while
+ * manipulating a conference participant (e.g. Pin or select participant).
  *
  * @param {Error} err - The Error which was thrown by the backend while
  * manipulating a conference participant and which is to be handled.
@@ -290,16 +316,12 @@ export function sendLocalParticipant(
             setDisplayName: Function,
             setLocalParticipantProperty: Function }) {
     const {
-        avatarID,
         avatarURL,
         email,
         features,
         name
     } = getLocalParticipant(stateful);
 
-    avatarID && conference.sendCommand(AVATAR_ID_COMMAND, {
-        value: avatarID
-    });
     avatarURL && conference.sendCommand(AVATAR_URL_COMMAND, {
         value: avatarURL
     });
@@ -312,4 +334,20 @@ export function sendLocalParticipant(
     }
 
     conference.setDisplayName(name);
+}
+
+/**
+ * A safe implementation of lodash#startCase that doesn't deburr the string.
+ *
+ * NOTE: According to lodash roadmap, lodash v5 will have this function.
+ *
+ * Code based on https://github.com/lodash/lodash/blob/master/startCase.js.
+ *
+ * @param {string} s - The string to do start case on.
+ * @returns {string}
+ */
+function safeStartCase(s = '') {
+    return _.words(`${s}`.replace(/['\u2019]/g, '')).reduce(
+        (result, word, index) => result + (index ? ' ' : '') + _.upperFirst(word)
+        , '');
 }

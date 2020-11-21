@@ -1,16 +1,17 @@
-/* @flow */
+// @flow
 
+import type { Dispatch } from 'redux';
 
+import {
+    FULL_SCREEN_CHANGED,
+    SET_FULL_SCREEN
+} from './actionTypes';
 import {
     clearToolboxTimeout,
     setToolboxTimeout,
     setToolboxTimeoutMS,
     setToolboxVisible
 } from './actions.native';
-import {
-    FULL_SCREEN_CHANGED,
-    SET_FULL_SCREEN
-} from './actionTypes';
 
 declare var interfaceConfig: Object;
 
@@ -23,11 +24,7 @@ export * from './actions.native';
  * @returns {Function}
  */
 export function dockToolbox(dock: boolean): Function {
-    return (dispatch: Dispatch<*>, getState: Function) => {
-        if (interfaceConfig.filmStripOnly) {
-            return;
-        }
-
+    return (dispatch: Dispatch<any>, getState: Function) => {
         const { timeoutMS, visible } = getState()['features/toolbox'];
 
         if (dock) {
@@ -71,7 +68,7 @@ export function fullScreenChanged(fullScreen: boolean) {
  * @returns {Function}
  */
 export function hideToolbox(force: boolean = false): Function {
-    return (dispatch: Dispatch<*>, getState: Function) => {
+    return (dispatch: Dispatch<any>, getState: Function) => {
         const state = getState();
         const {
             alwaysVisible,
@@ -122,7 +119,7 @@ export function setFullScreen(fullScreen: boolean) {
  * @returns {Function}
  */
 export function showToolbox(timeout: number = 0): Object {
-    return (dispatch: Dispatch<*>, getState: Function) => {
+    return (dispatch: Dispatch<any>, getState: Function) => {
         const state = getState();
         const {
             alwaysVisible,

@@ -1,5 +1,6 @@
 // @flow
 
+import { jitsiLocalStorage } from '@jitsi/js-utils';
 import _ from 'lodash';
 import React, { Component, Fragment } from 'react';
 import { I18nextProvider } from 'react-i18next';
@@ -10,13 +11,13 @@ import Thunk from 'redux-thunk';
 import { i18next } from '../../i18n';
 import {
     MiddlewareRegistry,
+    PersistenceRegistry,
     ReducerRegistry,
     StateListenerRegistry
 } from '../../redux';
 import { SoundCollection } from '../../sounds';
-import { PersistenceRegistry } from '../../storage';
-
 import { appWillMount, appWillUnmount } from '../actions';
+import logger from '../logger';
 
 declare var APP: Object;
 
@@ -55,11 +56,16 @@ export default class BaseApp extends Component<*, State> {
 
         this.state = {
             route: {},
-
-            // $FlowFixMe
             store: undefined
         };
+    }
 
+    /**
+     * Initializes the app.
+     *
+     * @inheritdoc
+     */
+    componentDidMount() {
         /**
          * Make the mobile {@code BaseApp} wait until the {@code AsyncStorage}
          * implementation of {@code Storage} initializes fully.
@@ -68,22 +74,21 @@ export default class BaseApp extends Component<*, State> {
          * @see {@link #_initStorage}
          * @type {Promise}
          */
-        this._init
-            = this._initStorage()
-                .catch(() => { /* AbstractApp should always initialize! */ })
-                .then(() =>
-                    this.setState({
-                        store: this._createStore()
-                    }));
-    }
-
-    /**
-     * Initializes the app.
-     *
-     * @inheritdoc
-     */
-    componentWillMount() {
-        this._init.then(() => this.state.store.dispatch(appWillMount(this)));
+        this._init = this._initStorage()
+            .catch(err => {
+                /* BaseApp should always initialize! */
+                logger.error(err);
+            })
+            .then(() => new Promise(resolve => {
+                this.setState({
+                    store: this._createStore()
+                }, resolve);
+            }))
+            .then(() => this.state.store.dispatch(appWillMount(this)))
+            .catch(err => {
+                /* BaseApp should always initialize! */
+                logger.error(err);
+            });
     }
 
     /**
@@ -105,7 +110,7 @@ export default class BaseApp extends Component<*, State> {
      * @returns {Promise}
      */
     _initStorage(): Promise<*> {
-        const { _initializing } = window.localStorage;
+        const _initializing = jitsiLocalStorage.getItem('_initializing');
 
         return _initializing || Promise.resolve();
     }
@@ -117,14 +122,14 @@ export default class BaseApp extends Component<*, State> {
      * @returns {ReactElement}
      */
     render() {
-        const { route: { component }, store } = this.state;
+        const { route: { component, props }, store } = this.state;
 
-        if (store && component) {
+        if (store) {
             return (
                 <I18nextProvider i18n = { i18next }>
                     <Provider store = { store }>
                         <Fragment>
-                            { this._createMainElement(component) }
+                            { this._createMainElement(component, props) }
                             <SoundCollection />
                             { this._createExtraElement() }
                             { this._renderDialogContainer() }
@@ -162,7 +167,7 @@ export default class BaseApp extends Component<*, State> {
      * @protected
      */
     _createMainElement(component, props) {
-        return React.createElement(component, props || {});
+        return component ? React.createElement(component, props || {}) : null;
     }
 
     /**

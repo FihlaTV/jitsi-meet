@@ -1,6 +1,9 @@
 /* @flow */
 
+import { jitsiLocalStorage } from '@jitsi/js-utils';
 import type { Dispatch } from 'redux';
+
+import { isOnline } from '../net-info/selectors';
 
 import JitsiMeetJS from './_';
 import {
@@ -20,7 +23,7 @@ declare var APP: Object;
  * @returns {Function}
  */
 export function disposeLib() {
-    return (dispatch: Dispatch<*>) => {
+    return (dispatch: Dispatch<any>) => {
         dispatch({ type: LIB_WILL_DISPOSE });
 
         // TODO Currently, lib-jitsi-meet doesn't have the functionality to
@@ -36,8 +39,9 @@ export function disposeLib() {
  * @returns {Function}
  */
 export function initLib() {
-    return (dispatch: Dispatch<*>, getState: Function): void => {
-        const config = getState()['features/base/config'];
+    return (dispatch: Dispatch<any>, getState: Function): void => {
+        const state = getState();
+        const config = state['features/base/config'];
 
         if (!config) {
             throw new Error('Cannot init lib-jitsi-meet without config');
@@ -48,7 +52,11 @@ export function initLib() {
         try {
             JitsiMeetJS.init({
                 enableAnalyticsLogging: isAnalyticsEnabled(getState),
-                ...config
+                ...config,
+                externalStorage: jitsiLocalStorage.isLocalStorageDisabled() ? jitsiLocalStorage : undefined
+            });
+            JitsiMeetJS.setNetworkInfo({
+                isOnline: isOnline(state)
             });
             dispatch({ type: LIB_DID_INIT });
         } catch (error) {

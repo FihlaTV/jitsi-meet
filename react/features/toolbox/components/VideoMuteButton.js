@@ -1,7 +1,6 @@
 // @flow
 
-import { connect } from 'react-redux';
-
+import UIEvents from '../../../../service/UI/UIEvents';
 import {
     ACTION_SHORTCUT_TRIGGERED,
     VIDEO_MUTE,
@@ -9,16 +8,17 @@ import {
     createToolbarEvent,
     sendAnalytics
 } from '../../analytics';
+import { setAudioOnly } from '../../base/audio-only';
 import { translate } from '../../base/i18n';
 import {
-    MEDIA_TYPE,
     VIDEO_MUTISM_AUTHORITY,
     setVideoMuted
 } from '../../base/media';
-import { AbstractVideoMuteButton } from '../../base/toolbox';
-import type { AbstractButtonProps } from '../../base/toolbox';
-import { isLocalTrackMuted } from '../../base/tracks';
-import UIEvents from '../../../../service/UI/UIEvents';
+import { connect } from '../../base/redux';
+import { AbstractVideoMuteButton } from '../../base/toolbox/components';
+import type { AbstractButtonProps } from '../../base/toolbox/components';
+import { getLocalVideoType, isLocalCameraTrackMuted } from '../../base/tracks';
+import { isVideoMuteButtonDisabled } from '../functions';
 
 declare var APP: Object;
 
@@ -33,9 +33,19 @@ type Props = AbstractButtonProps & {
     _audioOnly: boolean,
 
     /**
+     * MEDIA_TYPE of the local video.
+     */
+    _videoMediaType: string,
+
+    /**
      * Whether video is currently muted or not.
      */
     _videoMuted: boolean,
+
+    /**
+     * Whether video button is disabled or not.
+     */
+    _videoDisabled: boolean,
 
     /**
      * The redux {@code dispatch} function.
@@ -93,14 +103,14 @@ class VideoMuteButton extends AbstractVideoMuteButton<Props, *> {
     }
 
     /**
-     * Indicates if this button should be disabled or not.
+     * Indicates if video is currently disabled or not.
      *
      * @override
      * @protected
      * @returns {boolean}
      */
     _isDisabled() {
-        return this.props._audioOnly;
+        return this.props._videoDisabled;
     }
 
     /**
@@ -143,9 +153,16 @@ class VideoMuteButton extends AbstractVideoMuteButton<Props, *> {
      */
     _setVideoMuted(videoMuted: boolean) {
         sendAnalytics(createToolbarEvent(VIDEO_MUTE, { enable: videoMuted }));
+        if (this.props._audioOnly) {
+            this.props.dispatch(
+                setAudioOnly(false, /* ensureTrack */ true));
+        }
+        const mediaType = this.props._videoMediaType;
+
         this.props.dispatch(
             setVideoMuted(
                 videoMuted,
+                mediaType,
                 VIDEO_MUTISM_AUTHORITY.USER,
                 /* ensureTrack */ true));
 
@@ -168,12 +185,14 @@ class VideoMuteButton extends AbstractVideoMuteButton<Props, *> {
  * }}
  */
 function _mapStateToProps(state): Object {
-    const { audioOnly } = state['features/base/conference'];
+    const { enabled: audioOnly } = state['features/base/audio-only'];
     const tracks = state['features/base/tracks'];
 
     return {
         _audioOnly: Boolean(audioOnly),
-        _videoMuted: isLocalTrackMuted(tracks, MEDIA_TYPE.VIDEO)
+        _videoDisabled: isVideoMuteButtonDisabled(state),
+        _videoMediaType: getLocalVideoType(tracks),
+        _videoMuted: isLocalCameraTrackMuted(tracks)
     };
 }
 

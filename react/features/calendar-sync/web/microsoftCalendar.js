@@ -1,15 +1,15 @@
-/* @flow */
+// @flow
 
 import { Client } from '@microsoft/microsoft-graph-client';
-import rs from 'jsrsasign';
+import base64js from 'base64-js';
+import type { Dispatch } from 'redux';
+import { findWindows } from 'windows-iana';
 
 import { createDeferred } from '../../../../modules/util/helpers';
-
-import parseURLParams from '../../base/config/parseURLParams';
-import { parseStandardURIString } from '../../base/util';
+import { parseStandardURIString, parseURLParams } from '../../base/util';
 import { getShareInfoText } from '../../invite';
-
 import { setCalendarAPIAuthState } from '../actions';
+
 
 /**
  * Constants used for interacting with the Microsoft API.
@@ -77,10 +77,10 @@ export const microsoftCalendarApi = {
      * @param {number} fetchStartDays - The number of days to go back
      * when fetching.
      * @param {number} fetchEndDays - The number of days to fetch.
-     * @returns {function(Dispatch<*>, Function): Promise<CalendarEntries>}
+     * @returns {function(Dispatch<any>, Function): Promise<CalendarEntries>}
      */
     getCalendarEntries(fetchStartDays: ?number, fetchEndDays: ?number) {
-        return (dispatch: Dispatch<*>, getState: Function): Promise<*> => {
+        return (dispatch: Dispatch<any>, getState: Function): Promise<*> => {
             const state = getState()['features/calendar-sync'] || {};
             const token = state.msAuthState && state.msAuthState.accessToken;
 
@@ -118,7 +118,7 @@ export const microsoftCalendarApi = {
      * @returns {function(Dispatch<*, Function>): Promise<string>}
      */
     getCurrentEmail(): Function {
-        return (dispatch: Dispatch<*>, getState: Function) => {
+        return (dispatch: Dispatch<any>, getState: Function) => {
             const { msAuthState = {} }
                 = getState()['features/calendar-sync'] || {};
             const email = msAuthState.userSigninName || '';
@@ -139,10 +139,10 @@ export const microsoftCalendarApi = {
     /**
      * Prompts the participant to sign in to the Microsoft API Client Library.
      *
-     * @returns {function(Dispatch<*>, Function): Promise<void>}
+     * @returns {function(Dispatch<any>, Function): Promise<void>}
      */
     signIn(): Function {
-        return (dispatch: Dispatch<*>, getState: Function) => {
+        return (dispatch: Dispatch<any>, getState: Function) => {
             // Ensure only one popup window at a time.
             if (popupAuthWindow) {
                 popupAuthWindow.focus();
@@ -238,10 +238,10 @@ export const microsoftCalendarApi = {
     /**
      * Returns whether or not the user is currently signed in.
      *
-     * @returns {function(Dispatch<*>, Function): Promise<boolean>}
+     * @returns {function(Dispatch<any>, Function): Promise<boolean>}
      */
     _isSignedIn(): Function {
-        return (dispatch: Dispatch<*>, getState: Function) => {
+        return (dispatch: Dispatch<any>, getState: Function) => {
             const now = new Date().getTime();
             const state
                 = getState()['features/calendar-sync'].msAuthState || {};
@@ -250,64 +250,12 @@ export const microsoftCalendarApi = {
 
             if (state.accessToken && isExpired) {
                 // token expired, let's refresh it
-                return dispatch(this._refreshAuthToken())
+                return dispatch(refreshAuthToken())
                     .then(() => true)
                     .catch(() => false);
             }
 
             return Promise.resolve(state.accessToken && !isExpired);
-        };
-    },
-
-    /**
-     * Renews an existing auth token so it can continue to be used.
-     *
-     * @private
-     * @returns {function(Dispatch<*>, Function): Promise<void>}
-     */
-    _refreshAuthToken(): Function {
-        return (dispatch: Dispatch<*>, getState: Function) => {
-            const { microsoftApiApplicationClientID }
-                = getState()['features/base/config'];
-            const { msAuthState = {} }
-                = getState()['features/calendar-sync'] || {};
-
-            const refreshAuthUrl = getAuthRefreshUrl(
-                microsoftApiApplicationClientID,
-                msAuthState.userDomainType,
-                msAuthState.userSigninName);
-
-            const iframe = document.createElement('iframe');
-
-            iframe.setAttribute('id', 'auth-iframe');
-            iframe.setAttribute('name', 'auth-iframe');
-            iframe.setAttribute('style', 'display: none');
-            iframe.setAttribute('src', refreshAuthUrl);
-
-            const signInPromise = new Promise(resolve => {
-                iframe.onload = () => {
-                    resolve(iframe.contentWindow.location.hash);
-                };
-            });
-
-            // The check for body existence is done for flow, which also runs
-            // against native where document.body may not be defined.
-            if (!document.body) {
-                return Promise.reject(
-                    'Cannot refresh auth token in this environment');
-            }
-
-            document.body.appendChild(iframe);
-
-            return signInPromise.then(hash => {
-                const params = getParamsFromHash(hash);
-
-                dispatch(setCalendarAPIAuthState({
-                    accessToken: params.access_token,
-                    idToken: params.id_token,
-                    tokenExpires: params.tokenExpires
-                }));
-            });
         };
     },
 
@@ -318,10 +266,10 @@ export const microsoftCalendarApi = {
      * @param {string} id - The event id.
      * @param {string} calendarId - The id of the calendar to use.
      * @param {string} location - The location to save to the event.
-     * @returns {function(Dispatch<*>): Promise<string|never>}
+     * @returns {function(Dispatch<any>): Promise<string|never>}
      */
     updateCalendarEvent(id: string, calendarId: string, location: string) {
-        return (dispatch: Dispatch<*>, getState: Function): Promise<*> => {
+        return (dispatch: Dispatch<any>, getState: Function): Promise<*> => {
             const state = getState()['features/calendar-sync'] || {};
             const token = state.msAuthState && state.msAuthState.accessToken;
 
@@ -502,8 +450,13 @@ function getValidatedTokenParts(tokenInfo, guids, appId) {
         return null;
     }
 
-    const payload
-         = rs.KJUR.jws.JWS.readSafeJSONString(rs.b64utoutf8(tokenParts[1]));
+    let payload;
+
+    try {
+        payload = JSON.parse(b64utoutf8(tokenParts[1]));
+    } catch (e) {
+        return null;
+    }
 
     if (payload.nonce !== guids.authNonce
         || payload.aud !== appId
@@ -534,6 +487,58 @@ function getValidatedTokenParts(tokenInfo, guids, appId) {
 }
 
 /**
+ * Renews an existing auth token so it can continue to be used.
+ *
+ * @private
+ * @returns {function(Dispatch<any>, Function): Promise<void>}
+ */
+function refreshAuthToken(): Function {
+    return (dispatch: Dispatch<any>, getState: Function) => {
+        const { microsoftApiApplicationClientID }
+            = getState()['features/base/config'];
+        const { msAuthState = {} }
+            = getState()['features/calendar-sync'] || {};
+
+        const refreshAuthUrl = getAuthRefreshUrl(
+            microsoftApiApplicationClientID,
+            msAuthState.userDomainType,
+            msAuthState.userSigninName);
+
+        const iframe = document.createElement('iframe');
+
+        iframe.setAttribute('id', 'auth-iframe');
+        iframe.setAttribute('name', 'auth-iframe');
+        iframe.setAttribute('style', 'display: none');
+        iframe.setAttribute('src', refreshAuthUrl);
+
+        const signInPromise = new Promise(resolve => {
+            iframe.onload = () => {
+                resolve(iframe.contentWindow.location.hash);
+            };
+        });
+
+        // The check for body existence is done for flow, which also runs
+        // against native where document.body may not be defined.
+        if (!document.body) {
+            return Promise.reject(
+                'Cannot refresh auth token in this environment');
+        }
+
+        document.body.appendChild(iframe);
+
+        return signInPromise.then(hash => {
+            const params = getParamsFromHash(hash);
+
+            dispatch(setCalendarAPIAuthState({
+                accessToken: params.access_token,
+                idToken: params.id_token,
+                tokenExpires: params.tokenExpires
+            }));
+        });
+    };
+}
+
+/**
  * Retrieves calendar entries from a specific calendar.
  *
  * @param {Object} client - The Microsoft-graph-client initialized.
@@ -559,9 +564,13 @@ function requestCalendarEvents( // eslint-disable-line max-params
         startDate.toISOString()}' and End/DateTime lt '${
         endDate.toISOString()}'`;
 
+    const ianaTimeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const windowsTimeZone = findWindows(ianaTimeZone);
+
     return client
         .api(`/me/calendars/${calendarId}/events`)
         .filter(filter)
+        .header('Prefer', `outlook.timezone="${windowsTimeZone}"`)
         .select('id,subject,start,end,location,body')
         .orderby('createdDateTime DESC')
         .get()
@@ -589,4 +598,41 @@ function s4(num) {
     }
 
     return ret;
+}
+
+/**
+ * Convert a Base64URL encoded string to a UTF-8 encoded string including CJK or Latin.
+ *
+ * @param {string} str - The string that needs conversion.
+ * @private
+ * @returns {string} - The converted string.
+ */
+function b64utoutf8(str) {
+    let s = str;
+
+    // Convert from Base64URL to Base64.
+
+    if (s.length % 4 === 2) {
+        s += '==';
+    } else if (s.length % 4 === 3) {
+        s += '=';
+    }
+
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+
+    // Convert Base64 to a byte array.
+
+    const bytes = base64js.toByteArray(s);
+
+    // Convert bytes to hex.
+
+    s = bytes.reduce((str_, byte) => str_ + byte.toString(16).padStart(2, '0'), '');
+
+    // Convert a hexadecimal string to a URLComponent string
+
+    s = s.replace(/(..)/g, '%$1');
+
+    // Decodee the URI component
+
+    return decodeURIComponent(s);
 }

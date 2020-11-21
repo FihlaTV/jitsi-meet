@@ -1,16 +1,16 @@
 // @flow
 
-import React, { Component } from 'react';
+import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { connect } from 'react-redux';
 
-import { openSettings } from '../../mobile/permissions';
 import { translate } from '../../base/i18n';
+import { AbstractPage } from '../../base/react';
+import { connect } from '../../base/redux';
+import { openSettings } from '../../mobile/permissions';
+import { refreshCalendar } from '../actions';
 
-import { isCalendarEnabled } from '../functions';
+import CalendarListContent from './CalendarListContent';
 import styles from './styles';
-
-import BaseCalendarList from './BaseCalendarList';
 
 /**
  * The tyoe of the React {@code Component} props of {@link CalendarList}.
@@ -36,7 +36,7 @@ type Props = {
 /**
  * Component to display a list of events from the (mobile) user's calendar.
  */
-class CalendarList extends Component<Props> {
+class CalendarList extends AbstractPage<Props> {
     /**
      * Initializes a new {@code CalendarList} instance.
      *
@@ -51,6 +51,21 @@ class CalendarList extends Component<Props> {
     }
 
     /**
+     * Public API method for {@code Component}s rendered in
+     * {@link AbstractPagedList}. When invoked, refreshes the calendar entries
+     * in the app.
+     *
+     * @param {Function} dispatch - The Redux dispatch function.
+     * @param {boolean} isInteractive - If true this refresh was caused by
+     * direct user interaction, false otherwise.
+     * @public
+     * @returns {void}
+     */
+    static refresh(dispatch, isInteractive) {
+        dispatch(refreshCalendar(false, isInteractive));
+    }
+
+    /**
      * Implements React's {@link Component#render}.
      *
      * @inheritdoc
@@ -59,10 +74,10 @@ class CalendarList extends Component<Props> {
         const { disabled } = this.props;
 
         return (
-            BaseCalendarList
-                ? <BaseCalendarList
+            CalendarListContent
+                ? <CalendarListContent
                     disabled = { disabled }
-                    renderListEmptyComponent
+                    listEmptyComponent
                         = { this._getRenderListEmptyComponent() } />
                 : null
         );
@@ -121,6 +136,4 @@ function _mapStateToProps(state: Object) {
     };
 }
 
-export default isCalendarEnabled()
-    ? translate(connect(_mapStateToProps)(CalendarList))
-    : undefined;
+export default translate(connect(_mapStateToProps)(CalendarList));

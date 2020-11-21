@@ -1,8 +1,12 @@
 // @flow
 
-import {
-    GoogleSignin
-} from 'react-native-google-signin';
+import { NativeModules } from 'react-native';
+
+let GoogleSignin;
+
+if (NativeModules.RNGoogleSignin) {
+    GoogleSignin = require('@react-native-community/google-signin').GoogleSignin;
+}
 
 import {
     API_URL_BROADCAST_STREAMS,
@@ -26,7 +30,18 @@ class GoogleApi {
      * @returns {void}
      */
     configure(config: Object) {
-        GoogleSignin.configure(config);
+        if (GoogleSignin) {
+            GoogleSignin.configure(config);
+        }
+    }
+
+    /**
+     * Retrieves the current tokens.
+     *
+     * @returns {Promise}
+     */
+    getTokens(): Promise<*> {
+        return GoogleSignin.getTokens();
     }
 
     /**
@@ -58,6 +73,10 @@ class GoogleApi {
      * @returns {Promise<*>}
      */
     hasPlayServices() {
+        if (!GoogleSignin) {
+            return Promise.reject(new Error('Google SignIn not supported'));
+        }
+
         return GoogleSignin.hasPlayServices();
     }
 
@@ -149,11 +168,12 @@ class GoogleApi {
                         let title;
 
                         // Finding title from the broadcast with the same
-                        // channelId. If not found (unknown scenario), we use
-                        // the key as title again.
+                        // boundStreamId. If not found (unknown scenario), we
+                        // use the key as title again.
                         for (const broadcast of broadcasts) {
-                            if (broadcast.snippet.channelId
-                                    === stream.snippet.channelId) {
+                            if (broadcast.contentDetails
+                                    && broadcast.contentDetails.boundStreamId
+                                        === stream.id) {
                                 title = broadcast.snippet.title;
                             }
                         }

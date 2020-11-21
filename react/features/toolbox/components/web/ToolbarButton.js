@@ -1,15 +1,36 @@
+/* @flow */
+
 import Tooltip from '@atlaskit/tooltip';
-import PropTypes from 'prop-types';
 import React from 'react';
 
+import { Icon } from '../../../base/icons';
 import AbstractToolbarButton from '../AbstractToolbarButton';
+import type { Props as AbstractToolbarButtonProps }
+    from '../AbstractToolbarButton';
+
+/**
+ * The type of the React {@code Component} props of {@link ToolbarButton}.
+ */
+type Props = AbstractToolbarButtonProps & {
+
+    /**
+     * The text to display in the tooltip.
+     */
+    tooltip: string,
+
+    /**
+     * From which direction the tooltip should appear, relative to the
+     * button.
+     */
+    tooltipPosition: string
+};
 
 /**
  * Represents a button in the toolbar.
  *
  * @extends AbstractToolbarButton
  */
-class ToolbarButton extends AbstractToolbarButton {
+class ToolbarButton extends AbstractToolbarButton<Props> {
     /**
      * Default values for {@code ToolbarButton} component's properties.
      *
@@ -20,23 +41,38 @@ class ToolbarButton extends AbstractToolbarButton {
     };
 
     /**
-     * {@code ToolbarButton} component's property types.
+     * Initializes a new {@code ToolbarButton} instance.
      *
-     * @static
+     * @inheritdoc
      */
-    static propTypes = {
-        ...AbstractToolbarButton.propTypes,
+    constructor(props: Props) {
+        super(props);
 
-        /**
-         * The text to display in the tooltip.
-         */
-        tooltip: PropTypes.string,
+        this._onKeyDown = this._onKeyDown.bind(this);
+    }
 
-        /**
-         * From which direction the tooltip should appear, relative to the
-         * button.
-         */
-        tooltipPosition: PropTypes.string
+    _onKeyDown: (Object) => void;
+
+    /**
+     * Handles 'Enter' key on the button to trigger onClick for accessibility.
+     * We should be handling Space onKeyUp but it conflicts with PTT.
+     *
+     * @param {Object} event - The key event.
+     * @private
+     * @returns {void}
+     */
+    _onKeyDown(event) {
+        // If the event coming to the dialog has been subject to preventDefault
+        // we don't handle it here.
+        if (event.defaultPrevented) {
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            event.stopPropagation();
+            this.props.onClick();
+        }
     }
 
     /**
@@ -51,8 +87,12 @@ class ToolbarButton extends AbstractToolbarButton {
         return (
             <div
                 aria-label = { this.props.accessibilityLabel }
+                aria-pressed = { this.props.toggled }
                 className = 'toolbox-button'
-                onClick = { this.props.onClick }>
+                onClick = { this.props.onClick }
+                onKeyDown = { this._onKeyDown }
+                role = 'button'
+                tabIndex = { 0 }>
                 { this.props.tooltip
                     ? <Tooltip
                         content = { this.props.tooltip }
@@ -71,8 +111,8 @@ class ToolbarButton extends AbstractToolbarButton {
      */
     _renderIcon() {
         return (
-            <div className = 'toolbox-icon'>
-                <i className = { this.props.iconName } />
+            <div className = { `toolbox-icon ${this.props.toggled ? 'toggled' : ''}` }>
+                <Icon src = { this.props.icon } />
             </div>
         );
     }

@@ -1,8 +1,8 @@
 // @flow
 
-import { connect } from 'react-redux';
-
-import { translate } from '../../base/i18n/index';
+import { translate } from '../../base/i18n';
+import { IconClosedCaption } from '../../base/icons';
+import { connect } from '../../base/redux';
 
 import {
     AbstractClosedCaptionButton,
@@ -16,10 +16,10 @@ class ClosedCaptionButton
     extends AbstractClosedCaptionButton {
 
     accessibilityLabel = 'toolbar.accessibilityLabel.cc';
-    iconName = 'icon-closed_caption';
-    toggledIconName = 'icon-closed_caption toggled';
+    icon = IconClosedCaption;
     tooltip = 'transcribing.ccButtonTooltip';
+    label = 'toolbar.startSubtitles';
+    toggledLabel = 'toolbar.stopSubtitles';
 }
 
-export default translate(connect(_abstractMapStateToProps)(
-    ClosedCaptionButton));
+export default translate(connect(_abstractMapStateToProps)(ClosedCaptionButton));

@@ -1,4 +1,6 @@
-/* @flow */
+// @flow
+
+import type { Dispatch } from 'redux';
 
 import { HIDE_DIALOG, OPEN_DIALOG } from './actionTypes';
 import { isDialogOpen } from './functions';
@@ -28,14 +30,17 @@ export function hideDialog(component: ?Object) {
  * @param {Object} component - The component to display as dialog.
  * @param {Object} [componentProps] - The React {@code Component} props of the
  * specified {@code component}.
+ * @param {boolean} rawDialog - True if the dialog is a raw dialog.
+ * (Doesn't inherit behavior from other common frameworks).
  * @returns {{
  *     type: OPEN_DIALOG,
  *     component: React.Component,
  *     componentProps: (Object | undefined)
  * }}
  */
-export function openDialog(component: Object, componentProps: ?Object) {
+export function openDialog(component: Object, componentProps: ?Object, rawDialog?: boolean) {
     return {
+        rawDialog,
         type: OPEN_DIALOG,
         component,
         componentProps
@@ -53,7 +58,7 @@ export function openDialog(component: Object, componentProps: ?Object) {
  * @returns {Function}
  */
 export function toggleDialog(component: Object, componentProps: ?Object) {
-    return (dispatch: Dispatch, getState: Function) => {
+    return (dispatch: Dispatch<any>, getState: Function) => {
         if (isDialogOpen(getState, component)) {
             dispatch(hideDialog(component));
         } else {

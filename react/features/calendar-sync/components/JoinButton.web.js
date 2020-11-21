@@ -1,10 +1,10 @@
 // @flow
 
-import Button from '@atlaskit/button';
-import React, { Component } from 'react';
 import Tooltip from '@atlaskit/tooltip';
+import React, { Component } from 'react';
 
 import { translate } from '../../base/i18n';
+import { Icon, IconAdd } from '../../base/icons';
 
 /**
  * The type of the React {@code Component} props of {@link JoinButton}.
@@ -58,13 +58,13 @@ class JoinButton extends Component<Props> {
         return (
             <Tooltip
                 content = { t('calendarSync.joinTooltip') }>
-                <Button
-                    appearance = 'primary'
-                    className = 'join-button'
-                    onClick = { this._onClick }
-                    type = 'button'>
-                    { t('calendarSync.join') }
-                </Button>
+                <div
+                    className = 'button join-button'
+                    onClick = { this._onClick }>
+                    <Icon
+                        size = '14'
+                        src = { IconAdd } />
+                </div>
             </Tooltip>
         );
     }
@@ -84,4 +84,3 @@ class JoinButton extends Component<Props> {
 }
 
 export default translate(JoinButton);
-

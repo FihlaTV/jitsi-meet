@@ -5,7 +5,6 @@
  *     type: SETTINGS_UPDATED,
  *     settings: {
  *         audioOutputDeviceId: string,
- *         avatarID: string,
  *         avatarURL: string,
  *         cameraDeviceId: string,
  *         displayName: string,
@@ -19,4 +18,4 @@
  *     }
  * }
  */
-export const SETTINGS_UPDATED = Symbol('SETTINGS_UPDATED');
+export const SETTINGS_UPDATED = 'SETTINGS_UPDATED';
